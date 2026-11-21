@@ -158,6 +158,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun remove(entryID: String) = client?.send(ClientMessage.remove(entryID))
+    fun move(entryID: String, to: Int) = client?.send(ClientMessage.move(entryID, to))
     fun transport(cmd: String) = client?.send(ClientMessage.transport(cmd))
     fun guideVocal(v: Double) = client?.send(ClientMessage.setGuideVocal(v))
     fun updateSettings(change: (SingSettings) -> SingSettings) {

@@ -29,6 +29,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -317,15 +320,18 @@ fun karaoke(line: LyricLine, t: Double) = buildAnnotatedString {
 @Composable
 fun HostControls(vm: PadViewModel, guide: Double) {
     var g by remember(guide) { mutableStateOf(guide.toFloat()) }
+    var mixer by remember { mutableStateOf(false) }
     val state by vm.state.collectAsState()
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(280.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(300.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             FilledTonalIconButton({ vm.transport("restart") }, Modifier.size(52.dp)) { Icon(Icons.Rounded.SkipPrevious, "Restart") }
             FilledIconButton({ vm.transport("pause") }, Modifier.size(70.dp)) {
                 Icon(if (state.nowPlaying.state == PlaybackState.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "Play or pause", Modifier.size(36.dp))
             }
             FilledTonalIconButton({ vm.transport("skip") }, Modifier.size(52.dp)) { Icon(Icons.Rounded.SkipNext, "Next song") }
+            FilledTonalIconButton({ mixer = true }, Modifier.size(52.dp)) { Icon(Icons.Rounded.Tune, "Mixer") }
         }
+        if (mixer) MixerDialog(vm) { mixer = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Guide", style = MaterialTheme.typography.labelMedium)
             Slider(g, { g = it }, Modifier.weight(1f).padding(horizontal = 8.dp), onValueChangeFinished = { vm.guideVocal(g.toDouble()) })
@@ -344,6 +350,10 @@ fun QueueRow(vm: PadViewModel, i: Int, e: QueueEntry) {
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 e.estimatedStart?.let { Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it.toLong())), style = MaterialTheme.typography.labelMedium) }
+                if (vm.isHost) {
+                    IconButton({ vm.move(e.id, (i - 1).coerceAtLeast(0)) }, enabled = i > 0) { Icon(Icons.Rounded.KeyboardArrowUp, "Move up") }
+                    IconButton({ vm.move(e.id, i + 1) }) { Icon(Icons.Rounded.KeyboardArrowDown, "Move down") }
+                }
                 if (vm.isHost || e.addedBy == saved?.padID) IconButton({ vm.remove(e.id) }) { Icon(Icons.Rounded.Close, "Remove") }
             }
         },
@@ -528,6 +538,8 @@ fun SettingsScreen(vm: PadViewModel) {
     val lang by vm.language.collectAsState()
     val languages by vm.languages.collectAsState()
     LaunchedEffect(Unit) { vm.loadLanguages() }
+    var picking by remember { mutableStateOf(false) }
+    if (picking) SingerPicker(vm) { picking = false }
     fun setTv(change: (TVDisplaySettings) -> TVDisplaySettings) = vm.updateSettings { it.copy(tv = change(it.tv)) }
     LazyColumn(Modifier.fillMaxSize().background(Ember.background), contentPadding = PaddingValues(20.dp)) {
         item {
@@ -536,6 +548,8 @@ fun SettingsScreen(vm: PadViewModel) {
             Text("Mac: ${saved?.endpoint?.name} · ${if (vm.isHost) "Host" else "Guest"} · ${if (connected) "Connected" else "Reconnecting…"}")
             TextButton({ vm.disconnect() }) { Text("Disconnect from this Mac", color = MaterialTheme.colorScheme.error) }
         }
+        item { Header("Me") }
+        item { ListItem({ Text("Singer") }, supportingContent = { Text(state.singers.firstOrNull { it.id == vm.singerId.value }?.name ?: "Not chosen") }, modifier = Modifier.clickable { picking = true }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
         item { Header("My lyrics") }
         item { LanguagePicker("Translate lyrics on this device", lang, languages) { vm.setLanguage(it) } }
         if (!vm.isHost) {
@@ -567,6 +581,16 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Header("Playback") }
         item { Toggle("Countdown before each song", state.settings.playback.countdownBetweenSongs) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(countdownBetweenSongs = v)) } } }
         item { Toggle("Play the next song automatically", state.settings.playback.autoAdvance) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(autoAdvance = v)) } } }
+        item { Toggle("Play the original when stems are not ready", state.settings.playback.playOriginalWhenNotReady) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(playOriginalWhenNotReady = v)) } } }
+        item { SliderRow("Default guide vocal (%)", state.settings.playback.defaultGuideVocal * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v / 100)) } } }
+        item { Header("Theme") }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
+                listOf("ember" to "Ember", "aurora" to "Aurora", "studio" to "Studio").forEach { (k, l) ->
+                    FilterChip(state.settings.theme.preset == k, { vm.updateSettings { it.copy(theme = it.theme.copy(preset = k)) } }, { Text(l) })
+                }
+            }
+        }
     }
 }
 
@@ -605,4 +629,38 @@ private fun LanguagePicker(label: String, value: String?, options: List<io.githu
         },
         confirmButton = { TextButton({ open = false }) { Text("Close") } },
     )
+}
+
+@Composable
+fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
+    val state by vm.state.collectAsState()
+    val p = state.settings.playback
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Mixer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                MixSlider("Guide vocal", state.nowPlaying.guideVocal) { vm.guideVocal(it) }
+                MixSlider("Music volume", p.musicVolume) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(musicVolume = v)) } }
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Microphone", Modifier.weight(1f))
+                    Switch(p.micEnabled, { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEnabled = v)) } })
+                }
+                state.mic?.let { m -> Text(m.message ?: if (m.state == "running") "Live on ${m.deviceName ?: "the Mac's mic"}" else m.state, style = MaterialTheme.typography.bodySmall) }
+                MixSlider("Mic volume", p.micGain) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micGain = v)) } }
+                MixSlider("Reverb", p.micReverb) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micReverb = v)) } }
+            }
+        },
+        confirmButton = { TextButton(dismiss) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun MixSlider(label: String, value: Double, onChange: (Double) -> Unit) {
+    var v by remember(value) { mutableStateOf(value.toFloat()) }
+    Column {
+        Row { Text(label, Modifier.weight(1f)); Text("${(v * 100).toInt()}%") }
+        Slider(v, { v = it; onChange(it.toDouble()) })
+    }
 }
