@@ -93,6 +93,7 @@ data class TVDisplaySettings(
     val showCountdown: Boolean = true,
     val showJoinQR: Boolean = true,
     val showTranslation: Boolean = false,
+    val translationLanguage: String? = null,
     val showScoreReveal: Boolean = true,
     val showScoreDetails: Boolean = true,
     val showConfetti: Boolean = true,

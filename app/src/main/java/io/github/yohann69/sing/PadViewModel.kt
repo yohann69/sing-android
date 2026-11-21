@@ -95,7 +95,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
 
     fun disconnect() {
         live?.cancel(); client?.close(); client = null
-        persist(null); _saved.value = null; _state.value = LiveState(); _connected.value = false
+        persist(null); prefs.edit().putString("translate", _language.value).apply(); _saved.value = null; _state.value = LiveState(); _connected.value = false
     }
 
     private fun handle(m: ServerMessage) {
@@ -119,7 +119,24 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         val id = _state.value.nowPlaying.entry?.song?.id
         if (id == lyricsFor) return
         lyricsFor = id; _lyrics.value = null
-        if (id != null) viewModelScope.launch { _lyrics.value = runCatching { client?.lyrics(id) }.getOrNull() }
+        if (id != null) viewModelScope.launch { _lyrics.value = runCatching { client?.lyrics(id, _language.value) }.getOrNull() }
+    }
+
+    private val _language = MutableStateFlow(prefs.getString("translate", null))
+    val language: StateFlow<String?> = _language.asStateFlow()
+    private val _languages = MutableStateFlow(emptyList<SingClient.Language>())
+    val languages: StateFlow<List<SingClient.Language>> = _languages.asStateFlow()
+
+    fun loadLanguages() = viewModelScope.launch {
+        if (_languages.value.isEmpty()) runCatching { client?.translationLanguages() }.getOrNull()?.let { _languages.value = it }
+    }
+
+    /** This device's own translation language for the lyrics it shows. */
+    fun setLanguage(code: String?) {
+        _language.value = code
+        prefs.edit().putString("translate", code).apply()
+        lyricsFor = null
+        refreshLyrics()
     }
 
     fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply() }

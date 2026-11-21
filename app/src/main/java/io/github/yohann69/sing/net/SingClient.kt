@@ -100,7 +100,10 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
 
     suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false): SearchResponse =
         get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null)
-    suspend fun lyrics(id: Long): Lyrics = get("/v1/songs/$id/lyrics")
+    suspend fun lyrics(id: Long, translateTo: String? = null): Lyrics = get("/v1/songs/$id/lyrics", "translate" to translateTo)
+
+    @Serializable data class Language(val code: String, val name: String)
+    suspend fun translationLanguages(): List<Language> = get("/v1/translation/languages")
     suspend fun stats(period: String): StatsResponse = get("/v1/stats", "period" to period)
     suspend fun suggestions(singer: Long?): List<Suggestion> = get("/v1/suggestions", "singer" to singer)
     suspend fun createSinger(name: String, emoji: String?): Singer {

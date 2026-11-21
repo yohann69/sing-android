@@ -267,6 +267,9 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                         AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
                             Text(if (l != null && idx != null) karaoke(l.lines[idx], pos) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
                         }
+                        i?.let { l?.lines?.getOrNull(it)?.translation }?.let { tr ->
+                            Text(tr, style = LyricStyle.copy(fontSize = 18.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = Ember.accentSoft)
+                        }
                         val next = i?.let { l?.lines?.getOrNull(it + 1) } ?: l?.lines?.firstOrNull()?.takeIf { i == null }
                         next?.let { Text(it.text, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.5f)) }
                         Spacer(Modifier.height(10.dp))
@@ -522,6 +525,9 @@ fun SettingsScreen(vm: PadViewModel) {
     val saved by vm.saved.collectAsState()
     val connected by vm.connected.collectAsState()
     val tv = state.settings.tv
+    val lang by vm.language.collectAsState()
+    val languages by vm.languages.collectAsState()
+    LaunchedEffect(Unit) { vm.loadLanguages() }
     fun setTv(change: (TVDisplaySettings) -> TVDisplaySettings) = vm.updateSettings { it.copy(tv = change(it.tv)) }
     LazyColumn(Modifier.fillMaxSize().background(Ember.background), contentPadding = PaddingValues(20.dp)) {
         item {
@@ -530,6 +536,8 @@ fun SettingsScreen(vm: PadViewModel) {
             Text("Mac: ${saved?.endpoint?.name} · ${if (vm.isHost) "Host" else "Guest"} · ${if (connected) "Connected" else "Reconnecting…"}")
             TextButton({ vm.disconnect() }) { Text("Disconnect from this Mac", color = MaterialTheme.colorScheme.error) }
         }
+        item { Header("My lyrics") }
+        item { LanguagePicker("Translate lyrics on this device", lang, languages) { vm.setLanguage(it) } }
         if (!vm.isHost) {
             item { Text("Only host pads can change the TV display and party settings.") }
             return@LazyColumn
@@ -539,7 +547,8 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Toggle("Next line", tv.showNextLine) { v -> setTv { it.copy(showNextLine = v) } } }
         item { Toggle("Backing vocals", tv.showBackingVocals) { v -> setTv { it.copy(showBackingVocals = v) } } }
         item { Toggle("Singer names", tv.showSingerNames) { v -> setTv { it.copy(showSingerNames = v) } } }
-        item { Toggle("Translation line", tv.showTranslation) { v -> setTv { it.copy(showTranslation = v) } } }
+        item { Toggle("Translation line (on-device AI)", tv.showTranslation) { v -> setTv { it.copy(showTranslation = v) } } }
+        if (tv.showTranslation) item { LanguagePicker("Translate the TV into", tv.translationLanguage, languages) { c -> setTv { it.copy(translationLanguage = c) } } }
         item { Toggle("Countdown dots", tv.showCountdown) { v -> setTv { it.copy(showCountdown = v) } } }
         item { Toggle("Word fill on line-synced lyrics", tv.estimatedWordWipe) { v -> setTv { it.copy(estimatedWordWipe = v) } } }
         item { SliderRow("Lyric size", tv.lyricSize, 56.0..150.0) { v -> setTv { it.copy(lyricSize = v) } } }
@@ -574,4 +583,26 @@ private fun SliderRow(label: String, value: Double, range: ClosedFloatingPointRa
         Text("$label: ${v.toInt()}")
         Slider(v, { v = it }, valueRange = range.start.toFloat()..range.endInclusive.toFloat(), onValueChangeFinished = { onChange(v.toDouble()) })
     }
+}
+
+@Composable
+private fun LanguagePicker(label: String, value: String?, options: List<io.github.yohann69.sing.net.SingClient.Language>, onPick: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    ListItem(
+        { Text(label) },
+        supportingContent = { Text(options.firstOrNull { it.code == value }?.name ?: "Off") },
+        modifier = Modifier.clickable { open = true },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
+    if (open) AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(label) },
+        text = {
+            LazyColumn(Modifier.height(420.dp)) {
+                item { ListItem({ Text("Off") }, Modifier.clickable { onPick(null); open = false }) }
+                items(options) { o -> ListItem({ Text(o.name) }, Modifier.clickable { onPick(o.code); open = false }) }
+            }
+        },
+        confirmButton = { TextButton({ open = false }) { Text("Close") } },
+    )
 }
