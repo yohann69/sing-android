@@ -737,6 +737,10 @@ fun SettingsScreen(vm: PadViewModel) {
             }
         }
         item { Toggle(tr("Even out loudness between songs"), state.settings.playback.normalizeLoudness) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(normalizeLoudness = v)) } } }
+        item { Toggle(tr("Jingle and music for the results"), state.settings.playback.resultsMusic) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(resultsMusic = v)) } } }
+        if (state.settings.playback.resultsMusic) {
+            item { SliderRow(tr("Results music volume (%)"), state.settings.playback.resultsMusicVolume * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(resultsMusicVolume = v / 100)) } } }
+        }
         item { Toggle(tr("Turn mics down when feedback howls"), state.settings.playback.feedbackProtection) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(feedbackProtection = v)) } } }
         item { SliderRow(tr("Default guide vocal (%)"), state.settings.playback.defaultGuideVocal * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v / 100)) } } }
         item { Header(tr("Theme")) }

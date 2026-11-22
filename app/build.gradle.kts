@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.yohann69.sing"
         minSdk = 29
         targetSdk = 37
-        versionCode = 6
-        versionName = "0.3.5"
+        versionCode = 7
+        versionName = "0.3.7"
     }
 
     buildTypes {

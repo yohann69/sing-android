@@ -168,6 +168,8 @@ data class PlaybackSettings(
     val crossfadeSeconds: Double = 0.0,
     val recordPerformances: Boolean = false,
     val keepRecordingsDays: Double = 30.0,
+    val resultsMusic: Boolean = true,
+    val resultsMusicVolume: Double = 0.6,
 )
 
 @Serializable
