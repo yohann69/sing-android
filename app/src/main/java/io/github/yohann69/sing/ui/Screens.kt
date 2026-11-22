@@ -504,6 +504,7 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
                 Row {
                     TextButton({ vm.toggleWish(s.id) }) { Text(if (s.id in wishes) "On my list ✓" else "Want to sing") }
                     if (vm.isHost) TextButton({ editing = true }) { Text("Song settings") }
+                    TextButton({ vm.reportBadLyrics(s.id) }) { Text("Wrong lyrics?") }
                 }
                 var key by remember { mutableStateOf<io.github.yohann69.sing.protocol.SmartKey?>(null) }
                 LaunchedEffect(s.id, me) { key = me?.let { m -> runCatching { vm.client?.smartKey(s.id, m) }.getOrNull() } }

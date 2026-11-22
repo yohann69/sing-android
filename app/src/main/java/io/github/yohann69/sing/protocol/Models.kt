@@ -109,8 +109,8 @@ data class NowPlaying(
     val loopStartMs: Int? = null,
     val loopEndMs: Int? = null,
 ) {
-    fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
-        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
+    fun estimatedPositionMs(now0: Long = System.currentTimeMillis()): Long = (now0 + Clock.offsetMs).let { now ->
+        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs }
 }
 
 @Serializable
@@ -326,7 +326,13 @@ data class LiveState(
 }
 
 @Serializable
-data class ServerInfo(val name: String, val protocolVersion: Int, val minimumProtocolVersion: Int, val appVersion: String, val livePort: Int? = null)
+data class ServerInfo(val name: String, val protocolVersion: Int, val minimumProtocolVersion: Int, val appVersion: String, val livePort: Int? = null, val time: Double? = null)
+
+@Serializable
+data class ModelInfo(val name: String, val task: String, val bytes: Long)
+
+/** Milliseconds the Mac's clock is ahead of this device's; set on each connection. */
+object Clock { @Volatile var offsetMs: Long = 0 }
 
 @Serializable
 data class PairRequest(val code: String, val deviceName: String, val deviceModel: String, val protocolVersion: Int = SingProtocol.VERSION)
@@ -441,6 +447,7 @@ object ClientMessage {
     fun auth(token: String) = msg("auth", buildJsonObject { put("token", token) })
     fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean, battle: Boolean = false) =
         msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext); if (battle) put("battle", true) })
+    fun deviceStatus(battery: Double?) = msg("deviceStatus", buildJsonObject { battery?.let { put("battery", it) } })
     fun setLoop(startMs: Int?, endMs: Int?) = msg("setLoop", buildJsonObject { startMs?.let { put("startMs", it) }; endMs?.let { put("endMs", it) } })
     fun remove(entryID: String) = msg("remove", buildJsonObject { put("entryID", entryID) })
     fun move(entryID: String, toIndex: Int) = msg("move", buildJsonObject { put("entryID", entryID); put("toIndex", toIndex) })

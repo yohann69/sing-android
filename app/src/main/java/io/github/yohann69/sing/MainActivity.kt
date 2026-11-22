@@ -89,6 +89,11 @@ fun App(vm: PadViewModel, scan: () -> Unit) {
             LaunchedEffect(it) { delay(2800); vm.clearToast() }
             Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(16.dp)) { Text(it) }
         }
+        val update by vm.update.collectAsState()
+        update?.let { u ->
+            Snackbar(Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp).padding(bottom = 72.dp),
+                action = { androidx.compose.material3.TextButton({ vm.dismissUpdate() }) { Text("OK") } }) { Text(u) }
+        }
     }
 }
 

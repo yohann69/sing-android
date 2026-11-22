@@ -59,6 +59,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.yohann69.sing.PadViewModel
 import io.github.yohann69.sing.protocol.ClearCacheRequest
+import kotlinx.coroutines.launch
 
 @Composable
 fun RatingRow(vm: PadViewModel, songId: Long) {
@@ -91,6 +92,9 @@ fun OwnerDialog(vm: PadViewModel, dismiss: () -> Unit) {
     var confirm by remember { mutableStateOf<ClearCacheRequest?>(null) }
     LaunchedEffect(Unit) { vm.loadOwner() }
     var audit by remember { mutableStateOf(emptyList<io.github.yohann69.sing.protocol.AuditEntry>()) }
+    var models by remember { mutableStateOf(emptyList<io.github.yohann69.sing.protocol.ModelInfo>()) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(overview) { if (overview != null) models = runCatching { vm.client?.models() }.getOrNull() ?: emptyList() }
     LaunchedEffect(overview) { if (overview != null) audit = runCatching { vm.client?.auditLog() }.getOrNull() ?: emptyList() }
     Dialog(dismiss, DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Ember.background)) {
@@ -142,6 +146,9 @@ fun OwnerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                         trailingContent = { IconButton({ confirm = ClearCacheRequest(songID = s.id) }) { Icon(Icons.Rounded.Delete, "Clear") } },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
+                item { Text("AI models", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
+                items(models) { m -> ListItem({ Text(m.name) }, supportingContent = { Text("${m.task} · ${size(m.bytes)}") }, trailingContent = { TextButton({ scope.launch { runCatching { vm.client?.removeModel(m.name) }; models = runCatching { vm.client?.models() }.getOrNull() ?: emptyList() } }) { Text("Remove", color = MaterialTheme.colorScheme.error) } }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
+                item { Row { TextButton({ scope.launch { runCatching { vm.client?.reinstallModels() }; models = runCatching { vm.client?.models() }.getOrNull() ?: emptyList() } }) { Text("Reinstall shipped models") }; TextButton({ scope.launch { runCatching { vm.client?.checkCaches() }; vm.showToast("Checking every song cache") } }) { Text("Check caches") } } }
                 item { Text("Who can change what", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
                 listOf("tv" to "TV display", "playback" to "Playback and mics", "queue" to "Queue rules", "theme" to "Theme").forEach { (k, l) ->
                     item {

@@ -132,6 +132,13 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
     suspend fun auditLog(): List<AuditEntry> = get("/v1/owner/audit")
     suspend fun displayPitch(id: Long): kotlinx.serialization.json.JsonElement = get("/v1/songs/$id/pitch")
 
+    suspend fun info(): ServerInfo = get("/v1/info")
+    suspend fun reportBadLyrics(id: Long) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/songs/$id/lyrics/report", "{}") }
+    suspend fun models(): List<ModelInfo> = get("/v1/owner/models")
+    suspend fun removeModel(name: String) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Delete, "/v1/owner/models/$name", "{}") }
+    suspend fun reinstallModels() { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/owner/models/reinstall", "{}") }
+    suspend fun checkCaches() { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/owner/check", "{}") }
+
     suspend fun recap(): PartyRecap = get("/v1/recap")
     suspend fun songSettings(id: Long): SongSettings = get("/v1/songs/$id/settings")
     suspend fun updateSongSettings(id: Long, s: SongSettings): SongSettings = send(HttpMethod.Put, "/v1/songs/$id/settings", json.encodeToString(SongSettings.serializer(), s))
