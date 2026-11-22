@@ -106,6 +106,7 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
     suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false, favoritesOf: Long? = null): SearchResponse =
         get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null, "favorites" to favoritesOf)
 
+    suspend fun recap(): PartyRecap = get("/v1/recap")
     suspend fun songSettings(id: Long): SongSettings = get("/v1/songs/$id/settings")
     suspend fun updateSongSettings(id: Long, s: SongSettings): SongSettings = send(HttpMethod.Put, "/v1/songs/$id/settings", json.encodeToString(SongSettings.serializer(), s))
     suspend fun recordings(singer: Long?): List<RecordingInfo> = get("/v1/recordings", "singer" to singer)

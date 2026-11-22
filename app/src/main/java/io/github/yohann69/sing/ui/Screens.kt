@@ -263,6 +263,7 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                             Text(r.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                             Text(r.comment, color = Ember.text.copy(alpha = 0.8f))
                             Text(r.categories.joinToString("  ·  ") { "${it.name} ${it.value}" }, style = MaterialTheme.typography.bodySmall)
+                            r.perSinger?.takeIf { it.size > 1 }?.let { parts -> Text(parts.joinToString("  ·  ") { "${it.name} ${it.count}" }, fontWeight = FontWeight.SemiBold) }
                             r.recordingID?.let { id -> RecordingPlayButton(vm, id, r.shareURL) }
                         }
                     }
@@ -514,6 +515,23 @@ fun StatsScreen(vm: PadViewModel) {
         BlobBackground(null)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { Text("Stats", style = MaterialTheme.typography.displaySmall) }
+            item {
+                val live by vm.state.collectAsState()
+                var recap by remember { mutableStateOf<io.github.yohann69.sing.protocol.PartyRecap?>(null) }
+                LaunchedEffect(Unit) { recap = runCatching { vm.client?.recap() }.getOrNull() }
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    live.leaderboard?.takeIf { it.isNotEmpty() }?.let { b -> Ranked("Tonight's top scores", b.map { it.name to it.count }) }
+                    (live.recap ?: recap)?.let { r ->
+                        GlassCard(Modifier.fillMaxWidth()) {
+                            Column {
+                                Text(r.name ?: "Last party", style = MaterialTheme.typography.titleMedium)
+                                Text("${r.songs} songs · ${r.minutes} minutes · ${r.singers} singers", fontWeight = FontWeight.Bold)
+                                r.highlights.forEach { Text(it) }
+                            }
+                        }
+                    }
+                }
+            }
             item { RecordingsSection(vm) }
             item {
                 val options = listOf("tonight" to "Tonight", "year" to "This year", "allTime" to "All time")
@@ -601,12 +619,23 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Toggle("Score reveal", tv.showScoreReveal) { v -> setTv { it.copy(showScoreReveal = v) } } }
         item { Toggle("Score details", tv.showScoreDetails) { v -> setTv { it.copy(showScoreDetails = v) } } }
         item { Toggle("Confetti", tv.showConfetti) { v -> setTv { it.copy(showConfetti = v) } } }
+        item { Toggle("Tonight's leaderboard between songs", tv.showLeaderboard) { v -> setTv { it.copy(showLeaderboard = v) } } }
         item { SliderRow("Results stay on screen (s)", tv.resultSeconds, 7.0..30.0) { v -> setTv { it.copy(resultSeconds = v) } } }
         item { Header("Playback") }
         item { Toggle("Countdown before each song", state.settings.playback.countdownBetweenSongs) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(countdownBetweenSongs = v)) } } }
         item { Toggle("Play the next song automatically", state.settings.playback.autoAdvance) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(autoAdvance = v)) } } }
         item { Toggle("Play the original when stems are not ready", state.settings.playback.playOriginalWhenNotReady) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(playOriginalWhenNotReady = v)) } } }
         item { Toggle("Singers take turns in the queue", state.settings.queue.fairRotation) { v -> vm.updateSettings { it.copy(queue = it.queue.copy(fairRotation = v)) } } }
+        item { Toggle("Queue a crowd favourite when the queue runs dry", state.settings.queue.autoFill) { v -> vm.updateSettings { it.copy(queue = it.queue.copy(autoFill = v)) } } }
+        item { Toggle("Record every performance", state.settings.playback.recordPerformances) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(recordPerformances = v)) } } }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text("Scoring", Modifier.align(Alignment.CenterVertically))
+                listOf("easy" to "Easy", "normal" to "Normal", "hard" to "Hard").forEach { (k, l) ->
+                    FilterChip(state.settings.playback.difficulty == k, { vm.updateSettings { it.copy(playback = it.playback.copy(difficulty = k)) } }, { Text(l) })
+                }
+            }
+        }
         item { Toggle("Even out loudness between songs", state.settings.playback.normalizeLoudness) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(normalizeLoudness = v)) } } }
         item { Toggle("Turn mics down when feedback howls", state.settings.playback.feedbackProtection) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(feedbackProtection = v)) } } }
         item { SliderRow("Default guide vocal (%)", state.settings.playback.defaultGuideVocal * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v / 100)) } } }

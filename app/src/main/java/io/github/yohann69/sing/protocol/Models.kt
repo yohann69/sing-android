@@ -100,6 +100,7 @@ data class TVDisplaySettings(
     val showScoreReveal: Boolean = true,
     val showScoreDetails: Boolean = true,
     val showConfetti: Boolean = true,
+    val showLeaderboard: Boolean = true,
     val estimatedWordWipe: Boolean = true,
     val resultSeconds: Double = 10.0,
     val lyricSize: Double = 96.0,
@@ -121,10 +122,13 @@ data class PlaybackSettings(
     val micEcho: Double = 0.0,
     val feedbackProtection: Boolean = true,
     val normalizeLoudness: Boolean = true,
+    val difficulty: String = "normal",
+    val recordPerformances: Boolean = false,
+    val keepRecordingsDays: Double = 30.0,
 )
 
 @Serializable
-data class QueueSettings(val fairRotation: Boolean = true, val guestsCanQueue: Boolean = true, val guestsCanRemoveOwn: Boolean = true, val maxQueuedPerSinger: Int = 0)
+data class QueueSettings(val fairRotation: Boolean = true, val autoFill: Boolean = false, val guestsCanQueue: Boolean = true, val guestsCanRemoveOwn: Boolean = true, val maxQueuedPerSinger: Int = 0)
 
 val micPresets = listOf("natural" to "Natural", "studio" to "Studio", "hall" to "Concert hall", "stadium" to "Stadium", "echo" to "Echo", "radio" to "Radio")
 
@@ -238,6 +242,22 @@ data class PerformanceResult(
     val leaderboard: List<RankedName> = emptyList(),
     val recordingID: Long? = null,
     val shareURL: String? = null,
+    val perSinger: List<RankedName>? = null,
+)
+
+@Serializable
+data class PartyRecap(
+    val name: String? = null,
+    val startedAt: Double,
+    val endedAt: Double,
+    val songs: Int,
+    val minutes: Int,
+    val singers: Int,
+    val topSinger: RankedName? = null,
+    val bestScore: RankedName? = null,
+    val bestSong: String? = null,
+    val topArtist: String? = null,
+    val highlights: List<String> = emptyList(),
 )
 
 @Serializable
@@ -250,6 +270,8 @@ data class LiveState(
     val requests: List<SongRequest> = emptyList(),
     val mic: MicStatus? = null,
     val result: PerformanceResult? = null,
+    val leaderboard: List<RankedName>? = null,
+    val recap: PartyRecap? = null,
     val preparingByID: Map<String, Double> = emptyMap(),
 ) {
     fun preparing(id: Long): Double? = preparingByID[id.toString()]
