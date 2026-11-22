@@ -1,5 +1,7 @@
 package io.github.yohann69.sing.ui
 
+import io.github.yohann69.sing.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,8 +65,8 @@ fun PinDialog(vm: PadViewModel) {
     var pin by remember { mutableStateOf("") }
     AlertDialog({ vm.cancelPin() }, title = { Text("PIN for ${singer.name}") },
         text = { OutlinedTextField(pin, { pin = it.filter(Char::isDigit) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)) },
-        confirmButton = { Button({ vm.unlock(pin) }, enabled = pin.length >= 4) { Text("Unlock") } },
-        dismissButton = { TextButton({ vm.cancelPin() }) { Text("Cancel") } })
+        confirmButton = { Button({ vm.unlock(pin) }, enabled = pin.length >= 4) { Text(tr("Unlock")) } },
+        dismissButton = { TextButton({ vm.cancelPin() }) { Text(tr("Cancel")) } })
 }
 
 private fun noteName(m: Double): String {
@@ -102,31 +104,31 @@ fun ProfileDialog(vm: PadViewModel, dismiss: () -> Unit) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 item { Row(verticalAlignment = Alignment.CenterVertically) { Text(singer.name, style = MaterialTheme.typography.displaySmall, modifier = Modifier.weight(1f)); IconButton(dismiss) { Icon(Icons.Rounded.Close, "Close") } } }
                 year?.let { y -> item { YearCard(y) } }
-                item { Toggle2("Hide my score", p.hideScore) { save(p.copy(hideScore = it)) } }
-                item { Toggle2("Leave me out of leaderboards", p.hideFromLeaderboard) { save(p.copy(hideFromLeaderboard = it)) } }
-                item { Toggle2("Leave me out of the stats", p.hideStats) { save(p.copy(hideStats = it)) } }
+                item { Toggle2(tr("Hide my score"), p.hideScore) { save(p.copy(hideScore = it)) } }
+                item { Toggle2(tr("Leave me out of leaderboards"), p.hideFromLeaderboard) { save(p.copy(hideFromLeaderboard = it)) } }
+                item { Toggle2(tr("Leave me out of the stats"), p.hideStats) { save(p.copy(hideStats = it)) } }
                 item {
-                    Text("My mic effect", Modifier.padding(top = 12.dp), color = Ember.accentSoft)
+                    Text(tr("My mic effect"), Modifier.padding(top = 12.dp), color = Ember.accentSoft)
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(p.micPreset == null, { save(p.copy(micPreset = null)) }, { Text("Party setting") })
+                        FilterChip(p.micPreset == null, { save(p.copy(micPreset = null)) }, { Text(tr("Party setting")) })
                         micPresets.forEach { (k, l) -> FilterChip(p.micPreset == k, { save(p.copy(micPreset = k)) }, { Text(l) }) }
                     }
                 }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Key for my songs: " + if (p.keyOffset == 0) "original" else "%+d".format(p.keyOffset), Modifier.weight(1f))
+                        Text(tr("Key for my songs: ") + if (p.keyOffset == 0) "original" else "%+d".format(p.keyOffset), Modifier.weight(1f))
                         TextButton({ save(p.copy(keyOffset = (p.keyOffset - 1).coerceAtLeast(-6))) }) { Text("−") }
                         TextButton({ save(p.copy(keyOffset = (p.keyOffset + 1).coerceAtMost(6))) }) { Text("+") }
                     }
                 }
                 if (p.rangeLow != null && p.rangeHigh != null) item { Text("Comfortable range: ${noteName(p.rangeLow!!)} to ${noteName(p.rangeHigh!!)}") }
                 item {
-                    Text("Profile PIN", Modifier.padding(top = 12.dp), color = Ember.accentSoft)
+                    Text(tr("Profile PIN"), Modifier.padding(top = 12.dp), color = Ember.accentSoft)
                     OutlinedTextField(pin, { pin = it.filter(Char::isDigit) }, label = { Text(if (p.hasPIN) "PIN set, type a new one" else "Add a PIN") }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
                     Row {
                         TextButton({ scope.launch { runCatching { vm.client?.setSingerPIN(singer.id, pin) }; pin = ""; p = p.copy(hasPIN = true) } }, enabled = pin.length >= 4) { Text(if (p.hasPIN) "Change PIN" else "Set PIN") }
-                        if (p.hasPIN) TextButton({ scope.launch { runCatching { vm.client?.setSingerPIN(singer.id, null) }; p = p.copy(hasPIN = false) } }) { Text("Remove PIN", color = MaterialTheme.colorScheme.error) }
+                        if (p.hasPIN) TextButton({ scope.launch { runCatching { vm.client?.setSingerPIN(singer.id, null) }; p = p.copy(hasPIN = false) } }) { Text(tr("Remove PIN"), color = MaterialTheme.colorScheme.error) }
                     }
                 }
             }
@@ -145,7 +147,7 @@ fun MicSection(vm: PadViewModel, p: PlaybackSettings) {
     val channels = meters.size.coerceAtLeast(1)
     Column {
         if (channels > 1) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Separate volume per mic", Modifier.weight(1f)); Switch(p.separateMics, { v -> vm.updateSettings { it.copy(playback = it.playback.copy(separateMics = v)) } }) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Separate volume per mic"), Modifier.weight(1f)); Switch(p.separateMics, { v -> vm.updateSettings { it.copy(playback = it.playback.copy(separateMics = v)) } }) }
             if (p.separateMics) for (c in 0 until channels.coerceAtMost(4)) {
                 Text("Mic ${c + 1}: ${((p.micChannelGains.getOrElse(c) { 1.0 }) * 100).toInt()}%")
                 Slider(p.micChannelGains.getOrElse(c) { 1.0 }.toFloat(), { v ->

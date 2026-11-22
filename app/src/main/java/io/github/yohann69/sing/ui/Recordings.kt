@@ -1,5 +1,7 @@
 package io.github.yohann69.sing.ui
 
+import io.github.yohann69.sing.tr
+
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -80,7 +82,7 @@ fun RecordingPlayButton(vm: PadViewModel, id: Long, share: String?) {
     DisposableEffect(Unit) { onDispose { player.stop() } }
     Row {
         TextButton({ vm.client?.let { player.toggle(id, it.recordingAudioUrl(id)) } }) { Text(if (player.playingId == id) "Stop" else "Listen back") }
-        share?.let { TextButton({ shareLink(ctx, it) }) { Text("Share") } }
+        share?.let { TextButton({ shareLink(ctx, it) }) { Text(tr("Share")) } }
     }
 }
 
@@ -98,7 +100,7 @@ fun RecordingsSection(vm: PadViewModel) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(if (vm.isHost) "Recordings" else "My recordings", style = MaterialTheme.typography.titleMedium)
-            if (items.isEmpty()) Text("Nothing recorded yet. The host can turn recording on in the party settings.", color = Ember.text.copy(alpha = 0.6f))
+            if (items.isEmpty()) Text(tr("Nothing recorded yet. The host can turn recording on in the party settings."), color = Ember.text.copy(alpha = 0.6f))
             items.take(20).forEach { r ->
                 ListItem(
                     headlineContent = { Text(r.songTitle, maxLines = 1) },
