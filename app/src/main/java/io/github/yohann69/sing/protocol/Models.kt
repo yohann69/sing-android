@@ -228,6 +228,8 @@ data class PerformanceResult(
     val categories: List<ScoreCategory> = emptyList(),
     val badges: List<String> = emptyList(),
     val leaderboard: List<RankedName> = emptyList(),
+    val recordingID: Long? = null,
+    val shareURL: String? = null,
 )
 
 @Serializable
@@ -367,3 +369,17 @@ object ClientMessage {
 }
 
 fun JsonObject.str(key: String) = this[key]?.jsonPrimitive?.content
+
+@Serializable
+data class RecordingInfo(
+    val id: Long,
+    val songID: Long? = null,
+    val songTitle: String,
+    val artist: String = "",
+    val singers: List<Singer> = emptyList(),
+    val recordedAt: Double,
+    val durationMs: Long = 0,
+    val score: Int? = null,
+    val kept: Boolean = false,
+    val shareToken: String = "",
+)

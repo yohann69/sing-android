@@ -106,6 +106,13 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
     suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false, favoritesOf: Long? = null): SearchResponse =
         get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null, "favorites" to favoritesOf)
 
+    suspend fun recordings(singer: Long?): List<RecordingInfo> = get("/v1/recordings", "singer" to singer)
+    fun recordingAudioUrl(id: Long) = "${endpoint.base}/v1/recordings/$id/audio?token=${Uri.encode(token ?: "")}"
+    fun shareUrl(r: RecordingInfo) = "${endpoint.base}/r/${r.shareToken}"
+    suspend fun keepRecording(id: Long, keep: Boolean) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/recordings/$id/${if (keep) "keep" else "unkeep"}", "{}") }
+    suspend fun deleteRecording(id: Long) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Delete, "/v1/recordings/$id", "{}") }
+    suspend fun replayRecording(id: Long) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/recordings/$id/replay", "{}") }
+
     suspend fun ratings(singer: Long): List<SongRating> = get("/v1/ratings", "singer" to singer)
     suspend fun rate(r: SongRating): SongRating = send(HttpMethod.Post, "/v1/ratings", json.encodeToString(SongRating.serializer(), r))
     suspend fun unlockOwner(pin: String): OwnerSession = send(HttpMethod.Post, "/v1/owner/unlock", "{\"pin\":\"${pin.filter { it.isDigit() }}\"}")

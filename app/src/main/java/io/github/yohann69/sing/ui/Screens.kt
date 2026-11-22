@@ -263,6 +263,7 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                             Text(r.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                             Text(r.comment, color = Ember.text.copy(alpha = 0.8f))
                             Text(r.categories.joinToString("  ·  ") { "${it.name} ${it.value}" }, style = MaterialTheme.typography.bodySmall)
+                            r.recordingID?.let { id -> RecordingPlayButton(vm, id, r.shareURL) }
                         }
                     }
                 }
@@ -510,6 +511,7 @@ fun StatsScreen(vm: PadViewModel) {
         BlobBackground(null)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { Text("Stats", style = MaterialTheme.typography.displaySmall) }
+            item { RecordingsSection(vm) }
             item {
                 val options = listOf("tonight" to "Tonight", "year" to "This year", "allTime" to "All time")
                 SingleChoiceSegmentedButtonRow {
