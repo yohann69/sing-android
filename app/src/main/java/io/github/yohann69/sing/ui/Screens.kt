@@ -1,6 +1,8 @@
 package io.github.yohann69.sing.ui
 
 import androidx.compose.animation.AnimatedContent
+import kotlin.math.roundToInt
+import io.github.yohann69.sing.protocol.micPresets
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -599,6 +601,9 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Toggle("Countdown before each song", state.settings.playback.countdownBetweenSongs) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(countdownBetweenSongs = v)) } } }
         item { Toggle("Play the next song automatically", state.settings.playback.autoAdvance) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(autoAdvance = v)) } } }
         item { Toggle("Play the original when stems are not ready", state.settings.playback.playOriginalWhenNotReady) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(playOriginalWhenNotReady = v)) } } }
+        item { Toggle("Singers take turns in the queue", state.settings.queue.fairRotation) { v -> vm.updateSettings { it.copy(queue = it.queue.copy(fairRotation = v)) } } }
+        item { Toggle("Even out loudness between songs", state.settings.playback.normalizeLoudness) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(normalizeLoudness = v)) } } }
+        item { Toggle("Turn mics down when feedback howls", state.settings.playback.feedbackProtection) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(feedbackProtection = v)) } } }
         item { SliderRow("Default guide vocal (%)", state.settings.playback.defaultGuideVocal * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v / 100)) } } }
         item { Header("Theme") }
         item {
@@ -659,6 +664,17 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 MixSlider("Guide vocal", state.nowPlaying.guideVocal) { vm.guideVocal(it) }
                 MixSlider("Music volume", p.musicVolume) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(musicVolume = v)) } }
+                val np = state.nowPlaying
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Key " + if (np.keyShift == 0) "original" else "%+d".format(np.keyShift), Modifier.weight(1f))
+                    TextButton({ vm.setKey(np.keyShift - 1) }) { Text("−") }
+                    TextButton({ vm.setKey(np.keyShift + 1) }) { Text("+") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tempo ${(np.tempo * 100).roundToInt()}%", Modifier.weight(1f))
+                    TextButton({ vm.setTempo(np.tempo - 0.05) }) { Text("−") }
+                    TextButton({ vm.setTempo(np.tempo + 0.05) }) { Text("+") }
+                }
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Microphone", Modifier.weight(1f))
@@ -666,7 +682,11 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                 }
                 state.mic?.let { m -> Text(m.message ?: if (m.state == "running") "Live on ${m.deviceName ?: "the Mac's mic"}" else m.state, style = MaterialTheme.typography.bodySmall) }
                 MixSlider("Mic volume", p.micGain) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micGain = v)) } }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    micPresets.forEach { (k, l) -> FilterChip(p.micPreset == k, { vm.updateSettings { it.copy(playback = it.playback.copy(micPreset = k)) } }, { Text(l) }) }
+                }
                 MixSlider("Reverb", p.micReverb) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micReverb = v)) } }
+                MixSlider("Echo", p.micEcho) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEcho = v)) } }
             }
         },
         confirmButton = { TextButton(dismiss) { Text("Done") } },

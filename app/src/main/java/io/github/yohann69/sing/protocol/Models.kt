@@ -74,9 +74,11 @@ data class NowPlaying(
     val guideVocal: Double = 0.0,
     val currentLine: String? = null,
     val nextLine: String? = null,
+    val keyShift: Int = 0,
+    val tempo: Double = 1.0,
 ) {
     fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
-        if (state == PlaybackState.playing) positionMs + (now - positionAt.toLong()).coerceAtLeast(0) else positionMs
+        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
 }
 
 @Serializable
@@ -114,7 +116,16 @@ data class PlaybackSettings(
     val micReverb: Double = 0.35,
     val musicVolume: Double = 0.9,
     val playOriginalWhenNotReady: Boolean = false,
+    val micPreset: String = "hall",
+    val micEcho: Double = 0.0,
+    val feedbackProtection: Boolean = true,
+    val normalizeLoudness: Boolean = true,
 )
+
+@Serializable
+data class QueueSettings(val fairRotation: Boolean = true, val guestsCanQueue: Boolean = true, val guestsCanRemoveOwn: Boolean = true, val maxQueuedPerSinger: Int = 0)
+
+val micPresets = listOf("natural" to "Natural", "studio" to "Studio", "hall" to "Concert hall", "stadium" to "Stadium", "echo" to "Echo", "radio" to "Radio")
 
 @Serializable
 data class ThemeSettings(val preset: String = "ember")
@@ -125,7 +136,7 @@ data class SingSettings(
     val tv: TVDisplaySettings = TVDisplaySettings(),
     val playback: PlaybackSettings = PlaybackSettings(),
     val theme: ThemeSettings = ThemeSettings(),
-    val queue: JsonElement? = null,
+    val queue: QueueSettings = QueueSettings(),
     val services: JsonElement? = null,
     val storage: StorageSettings = StorageSettings(),
     val system: SystemSettings = SystemSettings(),
@@ -350,6 +361,8 @@ object ClientMessage {
     fun updateSettings(s: SingSettings) = msg("updateSettings", enc(s))
     fun request(track: CatalogTrack, singerIDs: List<Long>) =
         msg("request", buildJsonObject { put("track", enc(track)); put("singerIDs", enc(singerIDs)) })
+    fun setKey(semitones: Int) = msg("setKey", buildJsonObject { put("semitones", semitones) })
+    fun setTempo(v: Double) = msg("setTempo", buildJsonObject { put("value", v) })
     fun ping() = msg("ping", null)
 }
 

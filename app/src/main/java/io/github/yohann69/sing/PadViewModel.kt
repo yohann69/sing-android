@@ -211,6 +211,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     fun move(entryID: String, to: Int) = client?.send(ClientMessage.move(entryID, to))
     fun transport(cmd: String) = client?.send(ClientMessage.transport(cmd))
     fun guideVocal(v: Double) = client?.send(ClientMessage.setGuideVocal(v))
+    fun setKey(k: Int) = client?.send(ClientMessage.setKey(k.coerceIn(-6, 6)))
+    fun setTempo(t: Double) = client?.send(ClientMessage.setTempo(t.coerceIn(0.75, 1.25)))
     fun updateSettings(change: (SingSettings) -> SingSettings) {
         val s = change(_state.value.settings)
         _state.update { it.copy(settings = s) }
