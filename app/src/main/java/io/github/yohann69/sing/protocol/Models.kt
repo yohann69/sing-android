@@ -74,9 +74,14 @@ data class NowPlaying(
     val guideVocal: Double = 0.0,
     val currentLine: String? = null,
     val nextLine: String? = null,
+    val keyShift: Int = 0,
+    val tempo: Double = 1.0,
+    val lyricOffsetMs: Int = 0,
+    val loopStartMs: Int? = null,
+    val loopEndMs: Int? = null,
 ) {
     fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
-        if (state == PlaybackState.playing) positionMs + (now - positionAt.toLong()).coerceAtLeast(0) else positionMs
+        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
 }
 
 @Serializable
@@ -97,6 +102,7 @@ data class TVDisplaySettings(
     val showScoreReveal: Boolean = true,
     val showScoreDetails: Boolean = true,
     val showConfetti: Boolean = true,
+    val showLeaderboard: Boolean = true,
     val estimatedWordWipe: Boolean = true,
     val resultSeconds: Double = 10.0,
     val lyricSize: Double = 96.0,
@@ -114,7 +120,19 @@ data class PlaybackSettings(
     val micReverb: Double = 0.35,
     val musicVolume: Double = 0.9,
     val playOriginalWhenNotReady: Boolean = false,
+    val micPreset: String = "hall",
+    val micEcho: Double = 0.0,
+    val feedbackProtection: Boolean = true,
+    val normalizeLoudness: Boolean = true,
+    val difficulty: String = "normal",
+    val recordPerformances: Boolean = false,
+    val keepRecordingsDays: Double = 30.0,
 )
+
+@Serializable
+data class QueueSettings(val fairRotation: Boolean = true, val autoFill: Boolean = false, val guestsCanQueue: Boolean = true, val guestsCanRemoveOwn: Boolean = true, val maxQueuedPerSinger: Int = 0)
+
+val micPresets = listOf("natural" to "Natural", "studio" to "Studio", "hall" to "Concert hall", "stadium" to "Stadium", "echo" to "Echo", "radio" to "Radio")
 
 @Serializable
 data class ThemeSettings(val preset: String = "ember")
@@ -125,9 +143,63 @@ data class SingSettings(
     val tv: TVDisplaySettings = TVDisplaySettings(),
     val playback: PlaybackSettings = PlaybackSettings(),
     val theme: ThemeSettings = ThemeSettings(),
-    val queue: JsonElement? = null,
+    val queue: QueueSettings = QueueSettings(),
     val services: JsonElement? = null,
+    val storage: StorageSettings = StorageSettings(),
+    val system: SystemSettings = SystemSettings(),
+    val network: NetworkSettings = NetworkSettings(),
+    val privacy: PrivacySettings = PrivacySettings(),
 )
+
+@Serializable
+data class PrivacySettings(val familyMode: Boolean = false, val keepHistory: Boolean = true, val guestsSeeStats: Boolean = true, val guestsCanRequest: Boolean = true, val guestsCanCreateSingers: Boolean = true)
+
+@Serializable
+data class SongSettings(val lyricOffsetMs: Int = 0, val defaultGuideVocal: Double? = null, val keyShift: Int = 0, val tempo: Double = 1.0, val hiddenInFamilyMode: Boolean = false, val pinned: Boolean = false)
+
+@Serializable
+data class StorageSettings(val limitGB: Double = 0.0, val stemsLimitGB: Double = 0.0, val lowDiskWarningGB: Double = 10.0, val autoFree: Boolean = true)
+
+@Serializable
+data class SystemSettings(val processLibraryInBackground: Boolean = true, val pauseProcessingWhileSinging: Boolean = true, val restAfterMinutes: Double = 0.0)
+
+@Serializable
+data class NetworkSettings(val bonjourName: String = "", val port: Int = 47800, val maxPads: Int = 0)
+
+@Serializable
+data class SongRating(val songID: Long, val singerID: Long, val value: Int = 0, val favorite: Boolean = false, val neverSuggest: Boolean = false)
+
+@Serializable
+data class StorageCategory(val id: String, val name: String, val bytes: Long, val items: Int, val clearable: Boolean)
+
+@Serializable
+data class SongUsage(val id: Long, val title: String, val artist: String, val bytes: Long, val lastPlayedAt: Double? = null, val pinned: Boolean = false)
+
+@Serializable
+data class StorageReport(
+    val categories: List<StorageCategory>,
+    val totalBytes: Long,
+    val diskFreeBytes: Long,
+    val diskTotalBytes: Long,
+    val limitBytes: Long? = null,
+    val lowDisk: Boolean = false,
+    val biggestSongs: List<SongUsage> = emptyList(),
+)
+
+@Serializable
+data class ClearCacheRequest(val category: String? = null, val songID: Long? = null, val notPlayedForDays: Int? = null, val dryRun: Boolean = false)
+
+@Serializable
+data class ClearCacheResult(val freedBytes: Long, val songs: Int)
+
+@Serializable
+data class PadInfo(val id: String, val name: String, val model: String? = null, val role: PadRole, val pairedAt: Double, val lastSeenAt: Double? = null, val connected: Boolean = false)
+
+@Serializable
+data class OwnerSession(val ownerToken: String, val expiresAt: Double)
+
+@Serializable
+data class OwnerOverview(val pinRequired: Boolean, val services: JsonElement? = null, val storage: StorageReport, val pads: List<PadInfo>, val processingPaused: Boolean = false)
 
 @Serializable
 data class SessionInfo(val id: Long, val name: String? = null, val startedAt: Double, val playCount: Int)
@@ -170,6 +242,26 @@ data class PerformanceResult(
     val categories: List<ScoreCategory> = emptyList(),
     val badges: List<String> = emptyList(),
     val leaderboard: List<RankedName> = emptyList(),
+    val recordingID: Long? = null,
+    val shareURL: String? = null,
+    val perSinger: List<RankedName>? = null,
+    val applause: Int? = null,
+)
+
+@Serializable
+data class PartyRecap(
+    val name: String? = null,
+    val startedAt: Double,
+    val endedAt: Double,
+    val songs: Int,
+    val minutes: Int,
+    val singers: Int,
+    val topSinger: RankedName? = null,
+    val bestScore: RankedName? = null,
+    val bestSong: String? = null,
+    val topArtist: String? = null,
+    val highlights: List<String> = emptyList(),
+    val reelURL: String? = null,
 )
 
 @Serializable
@@ -182,6 +274,8 @@ data class LiveState(
     val requests: List<SongRequest> = emptyList(),
     val mic: MicStatus? = null,
     val result: PerformanceResult? = null,
+    val leaderboard: List<RankedName>? = null,
+    val recap: PartyRecap? = null,
     val preparingByID: Map<String, Double> = emptyMap(),
 ) {
     fun preparing(id: Long): Double? = preparingByID[id.toString()]
@@ -237,6 +331,7 @@ data class LyricLine(
     val segments: List<LyricSegment>,
     val background: List<LyricSegment> = emptyList(),
     val translation: String? = null,
+    val romanization: String? = null,
 ) {
     val text: String get() = segments.joinToString("") { it.text + if (it.endsWord) " " else "" }.trim()
 }
@@ -294,8 +389,9 @@ object ClientMessage {
     private inline fun <reified T> enc(v: T) = SingProtocol.json.encodeToJsonElement(v)
 
     fun auth(token: String) = msg("auth", buildJsonObject { put("token", token) })
-    fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean) =
-        msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext) })
+    fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean, battle: Boolean = false) =
+        msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext); if (battle) put("battle", true) })
+    fun setLoop(startMs: Int?, endMs: Int?) = msg("setLoop", buildJsonObject { startMs?.let { put("startMs", it) }; endMs?.let { put("endMs", it) } })
     fun remove(entryID: String) = msg("remove", buildJsonObject { put("entryID", entryID) })
     fun move(entryID: String, toIndex: Int) = msg("move", buildJsonObject { put("entryID", entryID); put("toIndex", toIndex) })
     fun transport(command: String) = msg("transport", buildJsonObject { put("command", command) })
@@ -303,7 +399,24 @@ object ClientMessage {
     fun updateSettings(s: SingSettings) = msg("updateSettings", enc(s))
     fun request(track: CatalogTrack, singerIDs: List<Long>) =
         msg("request", buildJsonObject { put("track", enc(track)); put("singerIDs", enc(singerIDs)) })
+    fun setKey(semitones: Int) = msg("setKey", buildJsonObject { put("semitones", semitones) })
+    fun setTempo(v: Double) = msg("setTempo", buildJsonObject { put("value", v) })
+    fun setLyricOffset(ms: Int) = msg("setLyricOffset", buildJsonObject { put("ms", ms) })
     fun ping() = msg("ping", null)
 }
 
 fun JsonObject.str(key: String) = this[key]?.jsonPrimitive?.content
+
+@Serializable
+data class RecordingInfo(
+    val id: Long,
+    val songID: Long? = null,
+    val songTitle: String,
+    val artist: String = "",
+    val singers: List<Singer> = emptyList(),
+    val recordedAt: Double,
+    val durationMs: Long = 0,
+    val score: Int? = null,
+    val kept: Boolean = false,
+    val shareToken: String = "",
+)

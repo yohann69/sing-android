@@ -1,6 +1,8 @@
 package io.github.yohann69.sing.ui
 
 import androidx.compose.animation.AnimatedContent
+import kotlin.math.roundToInt
+import io.github.yohann69.sing.protocol.micPresets
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -29,6 +31,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Tune
@@ -259,6 +263,9 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                             Text(r.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                             Text(r.comment, color = Ember.text.copy(alpha = 0.8f))
                             Text(r.categories.joinToString("  ·  ") { "${it.name} ${it.value}" }, style = MaterialTheme.typography.bodySmall)
+                            r.perSinger?.takeIf { it.size > 1 }?.let { parts -> Text(parts.joinToString("  ·  ") { "${it.name} ${it.count}" }, fontWeight = FontWeight.SemiBold) }
+                            r.applause?.let { Text("👏 $it", fontWeight = FontWeight.SemiBold) }
+                            r.recordingID?.let { id -> RecordingPlayButton(vm, id, r.shareURL) }
                         }
                     }
                 }
@@ -269,6 +276,9 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                         val i = l?.lineIndex(pos + 0.15)
                         AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
                             Text(if (l != null && idx != null) karaoke(l.lines[idx], pos) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
+                        }
+                        i?.let { l?.lines?.getOrNull(it)?.romanization }?.let { ro ->
+                            Text(ro, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.75f))
                         }
                         i?.let { l?.lines?.getOrNull(it)?.translation }?.let { tr ->
                             Text(tr, style = LyricStyle.copy(fontSize = 18.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = Ember.accentSoft)
@@ -385,23 +395,34 @@ fun SearchScreen(vm: PadViewModel) {
     var q by remember { mutableStateOf("") }
     var ready by remember { mutableStateOf(false) }
     var duet by remember { mutableStateOf(false) }
+    var favorites by remember { mutableStateOf(false) }
+    var hum by remember { mutableStateOf<List<SongSummary>?>(null) }
+    val me by vm.singerId.collectAsState()
+    val ratings by vm.ratings.collectAsState()
     var result by remember { mutableStateOf(SearchResponse(emptyList(), 0)) }
     var song by remember { mutableStateOf<SongSummary?>(null) }
     var track by remember { mutableStateOf<CatalogTrack?>(null) }
-    LaunchedEffect(q, ready, duet) {
+    LaunchedEffect(q, ready, duet, favorites, ratings.size) {
         delay(250)
-        if (q.isNotBlank()) runCatching { vm.client?.search(q, ready, duet) }.getOrNull()?.let { result = it }
+        if (q.isNotBlank() || favorites) runCatching { vm.client?.search(q, ready, duet, if (favorites) me else null) }.getOrNull()?.let { result = it }
         else result = SearchResponse(emptyList(), 0)
     }
     Box(Modifier.fillMaxSize()) {
         BlobBackground(null)
         Column(Modifier.fillMaxSize().padding(20.dp)) {
-            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, placeholder = { Text("Any song or artist") }, singleLine = true, shape = RoundedCornerShape(28.dp))
+            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, trailingIcon = { HumButton(vm) { hum = it } },
+                placeholder = { Text("Any song or artist, or hum it") }, singleLine = true, shape = RoundedCornerShape(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+                FilterChip(favorites, { favorites = !favorites }, { Text("Favorites") })
                 FilterChip(ready, { ready = !ready }, { Text("Ready now") })
                 FilterChip(duet, { duet = !duet }, { Text("Duets") })
             }
             LazyColumn(Modifier.fillMaxSize()) {
+                hum?.takeIf { q.isBlank() }?.let { h ->
+                    item { Text("Sounds like", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
+                    if (h.isEmpty()) item { Text("No match. Hum the chorus a bit longer.") }
+                    items(h) { s -> SongRow(vm, s, s.artist) { song = s } }
+                }
                 if (result.songs.isNotEmpty()) item { Text("In the library", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
                 items(result.songs) { s -> SongRow(vm, s, s.artist) { song = s } }
                 if (result.catalog.isNotEmpty()) item { Text("Not in the library yet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
@@ -426,8 +447,14 @@ fun SearchScreen(vm: PadViewModel) {
 @Composable
 fun SongRow(vm: PadViewModel, s: SongSummary, detail: String, onClick: () -> Unit) {
     val state by vm.state.collectAsState()
+    val ratings by vm.ratings.collectAsState()
     ListItem(
-        headlineContent = { Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (ratings[s.id]?.favorite == true) Icon(Icons.Rounded.Favorite, "Favorite", Modifier.padding(start = 6.dp).size(14.dp), tint = Color(0xFFFF6B9A))
+            }
+        },
         supportingContent = { Text(detail, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingContent = { Artwork(vm, s, 52, 10) },
         trailingContent = {
@@ -448,6 +475,9 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
     val state by vm.state.collectAsState()
     val me by vm.singerId.collectAsState()
     var picked by remember { mutableStateOf(setOfNotNull(me)) }
+    var editing by remember { mutableStateOf(false) }
+    var battle by remember { mutableStateOf(false) }
+    if (editing) SongSettingsDialog(vm, s.id) { editing = false }
     AlertDialog(
         onDismissRequest = dismiss,
         icon = { Artwork(vm, s, 120, 20) },
@@ -455,14 +485,18 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
         text = {
             Column {
                 Text("${s.artist} · ${durationText(s.durationMs)}")
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
+                RatingRow(vm, s.id)
+                if (vm.isHost) TextButton({ editing = true }) { Text("Song settings") }
+                Spacer(Modifier.height(8.dp))
                 Text(if (s.isDuet) "Duet: pick two singers" else "Who sings?", fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.singers.forEach { x -> FilterChip(x.id in picked, { picked = if (x.id in picked) picked - x.id else picked + x.id }, { Text(x.name) }, leadingIcon = { SingerDot(x) }) }
                 }
+                if (picked.size >= 2) Row(verticalAlignment = Alignment.CenterVertically) { Text("Battle: take turns, best score wins", Modifier.weight(1f)); Switch(battle, { battle = it }) }
             }
         },
-        confirmButton = { Button({ vm.enqueue(s, picked.toList(), false); dismiss() }) { Text("Add to queue") } },
+        confirmButton = { Button({ vm.enqueue(s, picked.toList(), false, battle); dismiss() }) { Text("Add to queue") } },
         dismissButton = { if (vm.isHost) TextButton({ vm.enqueue(s, picked.toList(), true); dismiss() }) { Text("Play next") } else TextButton(dismiss) { Text("Cancel") } },
     )
 }
@@ -494,6 +528,25 @@ fun StatsScreen(vm: PadViewModel) {
         BlobBackground(null)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { Text("Stats", style = MaterialTheme.typography.displaySmall) }
+            item {
+                val live by vm.state.collectAsState()
+                var recap by remember { mutableStateOf<io.github.yohann69.sing.protocol.PartyRecap?>(null) }
+                LaunchedEffect(Unit) { recap = runCatching { vm.client?.recap() }.getOrNull() }
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    live.leaderboard?.takeIf { it.isNotEmpty() }?.let { b -> Ranked("Tonight's top scores", b.map { it.name to it.count }) }
+                    (live.recap ?: recap)?.let { r ->
+                        GlassCard(Modifier.fillMaxWidth()) {
+                            Column {
+                                Text(r.name ?: "Last party", style = MaterialTheme.typography.titleMedium)
+                                Text("${r.songs} songs · ${r.minutes} minutes · ${r.singers} singers", fontWeight = FontWeight.Bold)
+                                r.highlights.forEach { Text(it) }
+                                r.reelURL?.let { url -> val ctx = androidx.compose.ui.platform.LocalContext.current; TextButton({ shareLink(ctx, url) }) { Text("Share the night's highlights") } }
+                            }
+                        }
+                    }
+                }
+            }
+            item { RecordingsSection(vm) }
             item {
                 val options = listOf("tonight" to "Tonight", "year" to "This year", "allTime" to "All time")
                 SingleChoiceSegmentedButtonRow {
@@ -539,7 +592,9 @@ fun SettingsScreen(vm: PadViewModel) {
     val languages by vm.languages.collectAsState()
     LaunchedEffect(Unit) { vm.loadLanguages() }
     var picking by remember { mutableStateOf(false) }
+    var owner by remember { mutableStateOf(false) }
     if (picking) SingerPicker(vm) { picking = false }
+    if (owner) OwnerDialog(vm) { owner = false }
     fun setTv(change: (TVDisplaySettings) -> TVDisplaySettings) = vm.updateSettings { it.copy(tv = change(it.tv)) }
     LazyColumn(Modifier.fillMaxSize().background(Ember.background), contentPadding = PaddingValues(20.dp)) {
         item {
@@ -556,6 +611,7 @@ fun SettingsScreen(vm: PadViewModel) {
             item { Text("Only host pads can change the TV display and party settings.") }
             return@LazyColumn
         }
+        item { ListItem({ Text("Owner area") }, supportingContent = { Text("Storage, devices, processing, lyrics sources") }, leadingContent = { Icon(Icons.Rounded.Lock, null) }, modifier = Modifier.clickable { owner = true }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
         item { Header("Lyrics on the TV") }
         item { Toggle("Previous line", tv.showPreviousLine) { v -> setTv { it.copy(showPreviousLine = v) } } }
         item { Toggle("Next line", tv.showNextLine) { v -> setTv { it.copy(showNextLine = v) } } }
@@ -577,11 +633,25 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Toggle("Score reveal", tv.showScoreReveal) { v -> setTv { it.copy(showScoreReveal = v) } } }
         item { Toggle("Score details", tv.showScoreDetails) { v -> setTv { it.copy(showScoreDetails = v) } } }
         item { Toggle("Confetti", tv.showConfetti) { v -> setTv { it.copy(showConfetti = v) } } }
+        item { Toggle("Tonight's leaderboard between songs", tv.showLeaderboard) { v -> setTv { it.copy(showLeaderboard = v) } } }
         item { SliderRow("Results stay on screen (s)", tv.resultSeconds, 7.0..30.0) { v -> setTv { it.copy(resultSeconds = v) } } }
         item { Header("Playback") }
         item { Toggle("Countdown before each song", state.settings.playback.countdownBetweenSongs) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(countdownBetweenSongs = v)) } } }
         item { Toggle("Play the next song automatically", state.settings.playback.autoAdvance) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(autoAdvance = v)) } } }
         item { Toggle("Play the original when stems are not ready", state.settings.playback.playOriginalWhenNotReady) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(playOriginalWhenNotReady = v)) } } }
+        item { Toggle("Singers take turns in the queue", state.settings.queue.fairRotation) { v -> vm.updateSettings { it.copy(queue = it.queue.copy(fairRotation = v)) } } }
+        item { Toggle("Queue a crowd favourite when the queue runs dry", state.settings.queue.autoFill) { v -> vm.updateSettings { it.copy(queue = it.queue.copy(autoFill = v)) } } }
+        item { Toggle("Record every performance", state.settings.playback.recordPerformances) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(recordPerformances = v)) } } }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text("Scoring", Modifier.align(Alignment.CenterVertically))
+                listOf("easy" to "Easy", "normal" to "Normal", "hard" to "Hard").forEach { (k, l) ->
+                    FilterChip(state.settings.playback.difficulty == k, { vm.updateSettings { it.copy(playback = it.playback.copy(difficulty = k)) } }, { Text(l) })
+                }
+            }
+        }
+        item { Toggle("Even out loudness between songs", state.settings.playback.normalizeLoudness) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(normalizeLoudness = v)) } } }
+        item { Toggle("Turn mics down when feedback howls", state.settings.playback.feedbackProtection) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(feedbackProtection = v)) } } }
         item { SliderRow("Default guide vocal (%)", state.settings.playback.defaultGuideVocal * 100, 0.0..100.0) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v / 100)) } } }
         item { Header("Theme") }
         item {
@@ -642,6 +712,27 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 MixSlider("Guide vocal", state.nowPlaying.guideVocal) { vm.guideVocal(it) }
                 MixSlider("Music volume", p.musicVolume) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(musicVolume = v)) } }
+                val np = state.nowPlaying
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Key " + if (np.keyShift == 0) "original" else "%+d".format(np.keyShift), Modifier.weight(1f))
+                    TextButton({ vm.setKey(np.keyShift - 1) }) { Text("−") }
+                    TextButton({ vm.setKey(np.keyShift + 1) }) { Text("+") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tempo ${(np.tempo * 100).roundToInt()}%", Modifier.weight(1f))
+                    TextButton({ vm.setTempo(np.tempo - 0.05) }) { Text("−") }
+                    TextButton({ vm.setTempo(np.tempo + 0.05) }) { Text("+") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Lyric timing " + if (np.lyricOffsetMs == 0) "as found" else "%+d ms".format(np.lyricOffsetMs), Modifier.weight(1f))
+                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs - 100) }) { Text("Earlier") }
+                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs + 100) }) { Text("Later") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Practice", Modifier.weight(1f))
+                    if (np.loopStartMs != null) TextButton({ vm.stopLoop() }) { Text("Stop loop") }
+                    else { TextButton({ vm.loopLines(1) }) { Text("Loop line") }; TextButton({ vm.loopLines(4) }) { Text("Loop 4") } }
+                }
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Microphone", Modifier.weight(1f))
@@ -649,7 +740,11 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                 }
                 state.mic?.let { m -> Text(m.message ?: if (m.state == "running") "Live on ${m.deviceName ?: "the Mac's mic"}" else m.state, style = MaterialTheme.typography.bodySmall) }
                 MixSlider("Mic volume", p.micGain) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micGain = v)) } }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    micPresets.forEach { (k, l) -> FilterChip(p.micPreset == k, { vm.updateSettings { it.copy(playback = it.playback.copy(micPreset = k)) } }, { Text(l) }) }
+                }
                 MixSlider("Reverb", p.micReverb) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micReverb = v)) } }
+                MixSlider("Echo", p.micEcho) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEcho = v)) } }
             }
         },
         confirmButton = { TextButton(dismiss) { Text("Done") } },

@@ -8,6 +8,9 @@ import io.github.yohann69.sing.net.Discovery
 import io.github.yohann69.sing.net.Endpoint
 import io.github.yohann69.sing.net.SingClient
 import io.github.yohann69.sing.protocol.CatalogTrack
+import io.github.yohann69.sing.protocol.SongRating
+import io.github.yohann69.sing.protocol.OwnerOverview
+import io.github.yohann69.sing.protocol.ClearCacheRequest
 import io.github.yohann69.sing.protocol.ClientMessage
 import io.github.yohann69.sing.protocol.LiveState
 import io.github.yohann69.sing.protocol.Lyrics
@@ -40,6 +43,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     val toast: StateFlow<String?> = _toast.asStateFlow()
     private val _singer = MutableStateFlow(prefs.getLong("singer", -1).takeIf { it >= 0 })
     val singerId: StateFlow<Long?> = _singer.asStateFlow()
+
+    private val notifier = Notifier(app)
 
     var client: SingClient? = null
         private set
@@ -90,17 +95,67 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         live?.cancel(); client?.close()
         val c = SingClient(s.endpoint, s.token)
         client = c
-        live = c.runLive(viewModelScope, onStatus = { _connected.value = it }) { m -> handle(m) }
+        live = c.runLive(viewModelScope, onStatus = { _connected.value = it; if (!it) notifier.clear() }) { m -> handle(m) }
+        loadRatings()
+    }
+
+    private val _ratings = MutableStateFlow<Map<Long, SongRating>>(emptyMap())
+    /** The current singer's thumbs, favorites and never-suggest marks. */
+    val ratings: StateFlow<Map<Long, SongRating>> = _ratings.asStateFlow()
+
+    fun loadRatings() = viewModelScope.launch {
+        val id = _singer.value ?: return@launch run { _ratings.value = emptyMap() }
+        runCatching { client?.ratings(id) }.getOrNull()?.let { list -> _ratings.value = list.associateBy { it.songID } }
+    }
+
+    fun rate(songId: Long, change: (SongRating) -> SongRating) {
+        val singer = _singer.value ?: return showToast("Pick who you are first")
+        val r = change(_ratings.value[songId] ?: SongRating(songId, singer))
+        _ratings.update { it + (songId to r) }
+        viewModelScope.launch { runCatching { client?.rate(r) } }
+    }
+
+    private val _owner = MutableStateFlow<OwnerOverview?>(null)
+    val owner: StateFlow<OwnerOverview?> = _owner.asStateFlow()
+    private val _ownerLocked = MutableStateFlow(false)
+    val ownerLocked: StateFlow<Boolean> = _ownerLocked.asStateFlow()
+
+    fun loadOwner() = viewModelScope.launch {
+        runCatching { client?.ownerOverview() }
+            .onSuccess { _owner.value = it; _ownerLocked.value = false }
+            .onFailure { e -> if ((e as? io.github.yohann69.sing.net.ApiException)?.code == "owner") _ownerLocked.value = true else showToast(e.message ?: "Could not load") }
+    }
+
+    fun unlockOwner(pin: String) = viewModelScope.launch {
+        runCatching { client?.unlockOwner(pin) }
+            .onSuccess { s -> client?.ownerToken = s?.ownerToken; loadOwner() }
+            .onFailure { showToast(it.message ?: "Wrong PIN") }
+    }
+
+    fun clearCache(r: ClearCacheRequest) = viewModelScope.launch {
+        runCatching { client?.clearCache(r) }.getOrNull()?.let { showToast("Freed ${android.text.format.Formatter.formatShortFileSize(getApplication(), it.freedBytes)}") }
+        loadOwner()
+    }
+
+    fun saveSongSettings(id: Long, s: io.github.yohann69.sing.protocol.SongSettings) = viewModelScope.launch { runCatching { client?.updateSongSettings(id, s) } }
+
+    fun unpair(padID: String) = viewModelScope.launch { runCatching { client?.unpair(padID) }; loadOwner() }
+
+    fun updateOwnerSettings(change: (SingSettings) -> SingSettings) {
+        val s = change(_state.value.settings)
+        _state.update { it.copy(settings = s) }
+        viewModelScope.launch { runCatching { client?.updateOwnerSettings(s) } }
     }
 
     fun disconnect() {
+        notifier.clear()
         live?.cancel(); client?.close(); client = null
         persist(null); prefs.edit().putString("translate", _language.value).apply(); _saved.value = null; _state.value = LiveState(); _connected.value = false
     }
 
     private fun handle(m: ServerMessage) {
         when (m) {
-            is ServerMessage.State -> { _state.value = m.state; refreshLyrics() }
+            is ServerMessage.State -> { _state.value = m.state; refreshLyrics(); notifier.update(m.state, _singer.value, true) }
             is ServerMessage.Position -> _state.update { it.copy(nowPlaying = it.nowPlaying.copy(positionMs = m.positionMs, positionAt = m.at)) }
             is ServerMessage.Progress -> _state.update {
                 val map = it.preparingByID.toMutableMap()
@@ -139,7 +194,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         refreshLyrics()
     }
 
-    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply() }
+    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings() }
 
     fun createSinger(name: String, onDone: (String?) -> Unit) = viewModelScope.launch {
         runCatching { client!!.createSinger(name, null) }
@@ -147,8 +202,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { onDone(it.message) }
     }
 
-    fun enqueue(song: SongSummary, singers: List<Long>, playNext: Boolean) {
-        client?.send(ClientMessage.enqueue(song.id, singers, playNext))
+    fun enqueue(song: SongSummary, singers: List<Long>, playNext: Boolean, battle: Boolean = false) {
+        client?.send(ClientMessage.enqueue(song.id, singers, playNext, battle && singers.size >= 2))
         showToast(if (playNext) "${song.title} plays next" else "${song.title} added to the queue")
     }
 
@@ -161,6 +216,23 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     fun move(entryID: String, to: Int) = client?.send(ClientMessage.move(entryID, to))
     fun transport(cmd: String) = client?.send(ClientMessage.transport(cmd))
     fun guideVocal(v: Double) = client?.send(ClientMessage.setGuideVocal(v))
+    fun setKey(k: Int) = client?.send(ClientMessage.setKey(k.coerceIn(-6, 6)))
+    fun setLyricOffset(ms: Int) = client?.send(ClientMessage.setLyricOffset(ms.coerceIn(-5000, 5000)))
+    /** Loops [count] lyric lines from the one being sung, for practice. */
+    fun loopLines(count: Int) {
+        val l = _lyrics.value ?: return
+        val t = _state.value.nowPlaying.estimatedPositionMs() / 1000.0
+        val i = l.lineIndex(t) ?: l.lines.indexOfFirst { it.start > t }.takeIf { it >= 0 } ?: return
+        val last = minOf(l.lines.size - 1, i + count - 1)
+        client?.send(ClientMessage.setLoop(((l.lines[i].start - 1.0).coerceAtLeast(0.0) * 1000).toInt(), ((l.lines[last].end + 0.6) * 1000).toInt()))
+    }
+    fun stopLoop() = client?.send(ClientMessage.setLoop(null, null))
+
+    fun humSearch(file: java.io.File, onResult: (List<SongSummary>) -> Unit) = viewModelScope.launch {
+        runCatching { client?.humSearch(file.readBytes()) }.onSuccess { onResult(it ?: emptyList()) }.onFailure { showToast(it.message ?: "Could not search") }
+    }
+
+    fun setTempo(t: Double) = client?.send(ClientMessage.setTempo(t.coerceIn(0.75, 1.25)))
     fun updateSettings(change: (SingSettings) -> SingSettings) {
         val s = change(_state.value.settings)
         _state.update { it.copy(settings = s) }
