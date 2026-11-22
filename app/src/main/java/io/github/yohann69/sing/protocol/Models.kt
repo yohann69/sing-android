@@ -53,7 +53,36 @@ data class SongSummary(
 )
 
 @Serializable
-data class Singer(val id: Long, val name: String, val emoji: String? = null, val colorHex: String)
+data class Singer(val id: Long, val name: String, val emoji: String? = null, val colorHex: String, val prefs: SingerPrefs? = null, val isGuest: Boolean? = null)
+
+@Serializable
+data class SingerPrefs(
+    val hideScore: Boolean = false,
+    val hideFromLeaderboard: Boolean = false,
+    val hideStats: Boolean = false,
+    val micPreset: String? = null,
+    val guideVocal: Double? = null,
+    val keyOffset: Int = 0,
+    val rangeLow: Double? = null,
+    val rangeHigh: Double? = null,
+    val nameStyle: String = "both",
+    val hasPIN: Boolean = false,
+)
+
+@Serializable
+data class YearInKaraoke(val year: Int, val songs: Int, val minutes: Int, val nights: Int, val topSong: String? = null, val topArtist: String? = null, val bestScore: Int? = null, val bestScoreSong: String? = null, val favoriteDuetPartner: String? = null)
+
+@Serializable
+data class SingerStats(val singer: Singer, val plays: Int, val year: YearInKaraoke? = null)
+
+@Serializable
+data class SmartKey(val semitones: Int, val reason: String)
+
+@Serializable
+data class SettingsProfile(val name: String)
+
+@Serializable
+data class AuditEntry(val at: Double, val who: String, val action: String)
 
 @Serializable
 data class QueueEntry(
@@ -80,8 +109,8 @@ data class NowPlaying(
     val loopStartMs: Int? = null,
     val loopEndMs: Int? = null,
 ) {
-    fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
-        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
+    fun estimatedPositionMs(now0: Long = System.currentTimeMillis()): Long = (now0 + Clock.offsetMs).let { now ->
+        if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs }
 }
 
 @Serializable
@@ -103,6 +132,13 @@ data class TVDisplaySettings(
     val showScoreDetails: Boolean = true,
     val showConfetti: Boolean = true,
     val showLeaderboard: Boolean = true,
+    val showRomanization: Boolean = true,
+    val showApplause: Boolean = true,
+    val justForFun: Boolean = false,
+    val lyricFont: String = "default",
+    val contextLines: Int = 1,
+    val showFunStats: Boolean = true,
+    val showHostCode: Boolean = false,
     val estimatedWordWipe: Boolean = true,
     val resultSeconds: Double = 10.0,
     val lyricSize: Double = 96.0,
@@ -125,6 +161,11 @@ data class PlaybackSettings(
     val feedbackProtection: Boolean = true,
     val normalizeLoudness: Boolean = true,
     val difficulty: String = "normal",
+    val separateMics: Boolean = false,
+    val micChannelGains: List<Double> = listOf(1.0, 1.0, 1.0, 1.0),
+    val micSlots: List<Int> = listOf(0, 1, 2, 3),
+    val pitchCorrection: Double = 0.0,
+    val crossfadeSeconds: Double = 0.0,
     val recordPerformances: Boolean = false,
     val keepRecordingsDays: Double = 30.0,
 )
@@ -149,6 +190,7 @@ data class SingSettings(
     val system: SystemSettings = SystemSettings(),
     val network: NetworkSettings = NetworkSettings(),
     val privacy: PrivacySettings = PrivacySettings(),
+    val locks: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -275,6 +317,8 @@ data class LiveState(
     val mic: MicStatus? = null,
     val result: PerformanceResult? = null,
     val leaderboard: List<RankedName>? = null,
+    val funFacts: List<String>? = null,
+    val joinURL: String? = null,
     val recap: PartyRecap? = null,
     val preparingByID: Map<String, Double> = emptyMap(),
 ) {
@@ -282,7 +326,13 @@ data class LiveState(
 }
 
 @Serializable
-data class ServerInfo(val name: String, val protocolVersion: Int, val minimumProtocolVersion: Int, val appVersion: String, val livePort: Int? = null)
+data class ServerInfo(val name: String, val protocolVersion: Int, val minimumProtocolVersion: Int, val appVersion: String, val livePort: Int? = null, val time: Double? = null)
+
+@Serializable
+data class ModelInfo(val name: String, val task: String, val bytes: Long)
+
+/** Milliseconds the Mac's clock is ahead of this device's; set on each connection. */
+object Clock { @Volatile var offsetMs: Long = 0 }
 
 @Serializable
 data class PairRequest(val code: String, val deviceName: String, val deviceModel: String, val protocolVersion: Int = SingProtocol.VERSION)
@@ -314,6 +364,9 @@ data class StatsResponse(
     val mostSkipped: List<RankedSong> = emptyList(),
     val busiestNights: List<NightSummary> = emptyList(),
     val decades: List<RankedName> = emptyList(),
+    val genres: List<RankedName>? = null,
+    val duetPairs: List<RankedName>? = null,
+    val scoreTrend: List<RankedName>? = null,
 )
 
 @Serializable
@@ -354,6 +407,7 @@ sealed interface ServerMessage {
     data class YoureUp(val songsAway: Int, val entryID: String, val singerID: Long) : ServerMessage
     data class Toast(val message: String) : ServerMessage
     data class Error(val body: ErrorBody) : ServerMessage
+    data class Meter(val levels: List<Float>) : ServerMessage
 
     companion object {
         @Serializable private data class HelloData(val server: ServerInfo, val role: PadRole, val padID: String)
@@ -361,6 +415,7 @@ sealed interface ServerMessage {
         @Serializable private data class ProgressData(val songID: Long, val progress: Double, val readiness: Readiness)
         @Serializable private data class YoureUpData(val songsAway: Int, val entryID: String, val singerID: Long)
         @Serializable private data class ToastData(val message: String)
+        @Serializable private data class MeterData(val levels: List<Float>)
 
         fun parse(text: String): ServerMessage? {
             val j = SingProtocol.json
@@ -375,6 +430,7 @@ sealed interface ServerMessage {
                     "youreUp" -> j.decodeFromJsonElement<YoureUpData>(data).let { YoureUp(it.songsAway, it.entryID, it.singerID) }
                     "toast" -> Toast(j.decodeFromJsonElement<ToastData>(data).message)
                     "error" -> Error(j.decodeFromJsonElement(data))
+                    "meter" -> Meter(j.decodeFromJsonElement<MeterData>(data).levels)
                     else -> null
                 }
             }.getOrNull()
@@ -391,6 +447,7 @@ object ClientMessage {
     fun auth(token: String) = msg("auth", buildJsonObject { put("token", token) })
     fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean, battle: Boolean = false) =
         msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext); if (battle) put("battle", true) })
+    fun deviceStatus(battery: Double?) = msg("deviceStatus", buildJsonObject { battery?.let { put("battery", it) } })
     fun setLoop(startMs: Int?, endMs: Int?) = msg("setLoop", buildJsonObject { startMs?.let { put("startMs", it) }; endMs?.let { put("endMs", it) } })
     fun remove(entryID: String) = msg("remove", buildJsonObject { put("entryID", entryID) })
     fun move(entryID: String, toIndex: Int) = msg("move", buildJsonObject { put("entryID", entryID); put("toIndex", toIndex) })
@@ -420,3 +477,6 @@ data class RecordingInfo(
     val kept: Boolean = false,
     val shareToken: String = "",
 )
+
+@Serializable
+data class PhoneMicSession(val port: Int, val key: String, val sampleRate: Int = 24000, val samplesPerPacket: Int = 480)

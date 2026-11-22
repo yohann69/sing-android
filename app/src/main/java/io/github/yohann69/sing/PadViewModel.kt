@@ -45,6 +45,89 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     val singerId: StateFlow<Long?> = _singer.asStateFlow()
 
     private val notifier = Notifier(app)
+    private val phoneMic = PhoneMicSender()
+    private val _phoneMicOn = MutableStateFlow(false)
+    val phoneMicOn: StateFlow<Boolean> = _phoneMicOn.asStateFlow()
+
+    /** Uses this phone as a wireless mic through the Mac's speakers. */
+    fun togglePhoneMic() = viewModelScope.launch {
+        if (_phoneMicOn.value) {
+            phoneMic.stop(); _phoneMicOn.value = false
+            runCatching { client?.stopPhoneMic() }
+            return@launch
+        }
+        val host = _saved.value?.endpoint?.host ?: return@launch
+        runCatching { client?.startPhoneMic() }
+            .onSuccess { s -> if (s != null) { phoneMic.start(host, s.port, s.key); _phoneMicOn.value = true; showToast("This phone is now a mic. Keep it away from the speakers.") } }
+            .onFailure { showToast(it.message ?: "Could not start the mic") }
+    }
+
+    override fun onCleared() { phoneMic.stop(); super.onCleared() }
+    private val _update = MutableStateFlow<String?>(null)
+    /** Set when the Mac runs a newer Sing! than this app. */
+    val update: StateFlow<String?> = _update.asStateFlow()
+    private var statusJob: Job? = null
+
+    /** Clock sync, update check and a battery report every minute. */
+    private fun afterConnect() {
+        viewModelScope.launch {
+            val t0 = System.currentTimeMillis()
+            val info = runCatching { client?.info() }.getOrNull() ?: return@launch
+            val t1 = System.currentTimeMillis()
+            info.time?.let { io.github.yohann69.sing.protocol.Clock.offsetMs = it.toLong() - (t0 + t1) / 2 }
+            val mine = getApplication<Application>().packageManager.getPackageInfo(getApplication<Application>().packageName, 0).versionName ?: "0"
+            if (newer(info.appVersion, mine)) _update.value = "The Mac runs Sing! ${info.appVersion}. Get the new app from ${_saved.value?.endpoint?.base}/sing.apk"
+        }
+        statusJob?.cancel()
+        statusJob = viewModelScope.launch {
+            while (true) {
+                val bm = getApplication<Application>().getSystemService(android.os.BatteryManager::class.java)
+                val pct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+                client?.send(ClientMessage.deviceStatus(if (pct in 0..100) pct / 100.0 else null))
+                kotlinx.coroutines.delay(60_000)
+            }
+        }
+    }
+
+    private fun newer(a: String, b: String): Boolean {
+        val x = a.split('.').map { it.toIntOrNull() ?: 0 }
+        val y = b.split('.').map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(x.size, y.size)) { val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }; if (d != 0) return d > 0 }
+        return false
+    }
+    fun dismissUpdate() { _update.value = null }
+    fun reportBadLyrics(id: Long) = viewModelScope.launch { runCatching { client?.reportBadLyrics(id) }; showToast("Thanks, the Mac is looking for better lyrics") }
+
+    private val _meters = MutableStateFlow<List<Float>>(emptyList())
+    val meters: StateFlow<List<Float>> = _meters.asStateFlow()
+    private val _wishes = MutableStateFlow<Set<Long>>(emptySet())
+    val wishes: StateFlow<Set<Long>> = _wishes.asStateFlow()
+    private val _pinFor = MutableStateFlow<io.github.yohann69.sing.protocol.Singer?>(null)
+    val pinFor: StateFlow<io.github.yohann69.sing.protocol.Singer?> = _pinFor.asStateFlow()
+
+    fun loadWishes() = viewModelScope.launch {
+        val id = _singer.value ?: return@launch run { _wishes.value = emptySet() }
+        runCatching { client?.wishes(id) }.getOrNull()?.let { l -> _wishes.value = l.map { it.id }.toSet() }
+    }
+
+    fun toggleWish(song: Long) {
+        val singer = _singer.value ?: return showToast("Pick who you are first")
+        val on = song !in _wishes.value
+        _wishes.update { if (on) it + song else it - song }
+        viewModelScope.launch { runCatching { client?.setWish(singer, song, on) } }
+    }
+
+    /** Picks a profile, asking for its PIN first when it has one. */
+    fun choose(s: io.github.yohann69.sing.protocol.Singer) {
+        if (s.prefs?.hasPIN == true && !isHost) _pinFor.value = s else chooseSinger(s.id)
+    }
+    fun cancelPin() { _pinFor.value = null }
+    fun unlock(pin: String) = viewModelScope.launch {
+        val s = _pinFor.value ?: return@launch
+        runCatching { client?.unlockSinger(s.id, pin) }
+            .onSuccess { _pinFor.value = null; chooseSinger(s.id) }
+            .onFailure { showToast(it.message ?: "Wrong PIN") }
+    }
 
     var client: SingClient? = null
         private set
@@ -166,7 +249,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
                 showToast(if (m.songsAway == 1) "You're up next! 🎤" else "You're up in ${m.songsAway} songs")
             is ServerMessage.Toast -> showToast(m.message)
             is ServerMessage.Error -> { showToast(m.body.message); if (m.body.code == "unauthorized") disconnect() }
-            is ServerMessage.Hello -> {}
+            is ServerMessage.Hello -> afterConnect()
+            is ServerMessage.Meter -> _meters.value = m.levels
         }
     }
 
@@ -194,7 +278,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         refreshLyrics()
     }
 
-    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings() }
+    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings(); loadWishes() }
 
     fun createSinger(name: String, onDone: (String?) -> Unit) = viewModelScope.launch {
         runCatching { client!!.createSinger(name, null) }

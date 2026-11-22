@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Tr.load(this)
         enableEdgeToEdge()
         if (resources.configuration.smallestScreenWidthDp >= 600) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         handle(intent)
@@ -89,6 +90,11 @@ fun App(vm: PadViewModel, scan: () -> Unit) {
             LaunchedEffect(it) { delay(2800); vm.clearToast() }
             Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(16.dp)) { Text(it) }
         }
+        val update by vm.update.collectAsState()
+        update?.let { u ->
+            Snackbar(Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(16.dp).padding(bottom = 72.dp),
+                action = { androidx.compose.material3.TextButton({ vm.dismissUpdate() }) { Text(tr("OK")) } }) { Text(u) }
+        }
     }
 }
 
@@ -103,7 +109,7 @@ fun Main(vm: PadViewModel) {
     NavigationSuiteScaffold(navigationSuiteItems = {
         Dest.entries.forEach { d ->
             item(
-                selected = dest == d, onClick = { dest = d }, label = { Text(d.label) },
+                selected = dest == d, onClick = { dest = d }, label = { Text(tr(if (d == Dest.Now) "Now Playing" else d.label)) },
                 icon = {
                     Icon(when (d) {
                         Dest.Now -> Icons.Rounded.Mic; Dest.Queue -> Icons.Rounded.QueueMusic; Dest.Search -> Icons.Rounded.Search
