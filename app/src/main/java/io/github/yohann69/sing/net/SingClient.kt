@@ -117,6 +117,7 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
         return json.decodeFromString<SearchResponse>(check(r)).songs
     }
 
+    suspend fun searchLines(q: String): SearchResponse = get("/v1/lines", "q" to q)
     suspend fun ask(q: String): SearchResponse = get("/v1/ask", "q" to q)
     suspend fun duetSuggestions(a: Long, b: Long): List<Suggestion> = get("/v1/suggestions/duet", "a" to a, "b" to b)
     suspend fun smartKey(song: Long, singer: Long): SmartKey = get("/v1/songs/$song/smartkey", "singer" to singer)

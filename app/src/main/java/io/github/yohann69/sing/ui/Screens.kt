@@ -407,15 +407,17 @@ fun SearchScreen(vm: PadViewModel) {
     var duet by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(false) }
     var ask by remember { mutableStateOf(false) }
+    var lineMode by remember { mutableStateOf(false) }
     var hum by remember { mutableStateOf<List<SongSummary>?>(null) }
     val me by vm.singerId.collectAsState()
     val ratings by vm.ratings.collectAsState()
     var result by remember { mutableStateOf(SearchResponse(emptyList(), 0)) }
     var song by remember { mutableStateOf<SongSummary?>(null) }
     var track by remember { mutableStateOf<CatalogTrack?>(null) }
-    LaunchedEffect(q, ready, duet, favorites, ratings.size, ask) {
+    LaunchedEffect(q, ready, duet, favorites, ratings.size, ask, lineMode) {
         delay(250)
-        if (ask && q.isNotBlank()) runCatching { vm.client?.ask(q) }.getOrNull()?.let { result = it }
+        if (lineMode && q.isNotBlank()) runCatching { vm.client?.searchLines(q) }.getOrNull()?.let { result = it }
+        else if (ask && q.isNotBlank()) runCatching { vm.client?.ask(q) }.getOrNull()?.let { result = it }
         else if (q.isNotBlank() || favorites) runCatching { vm.client?.search(q, ready, duet, if (favorites) me else null) }.getOrNull()?.let { result = it }
         else result = SearchResponse(emptyList(), 0)
     }
@@ -425,7 +427,8 @@ fun SearchScreen(vm: PadViewModel) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, trailingIcon = { HumButton(vm) { hum = it } },
                 placeholder = { Text("Any song or artist, or hum it") }, singleLine = true, shape = RoundedCornerShape(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                FilterChip(ask, { ask = !ask }, { Text("✨ Ask") })
+                FilterChip(ask, { ask = !ask; lineMode = false }, { Text("✨ Ask") })
+                FilterChip(lineMode, { lineMode = !lineMode; ask = false }, { Text("Lyric line") })
                 FilterChip(favorites, { favorites = !favorites }, { Text("Favorites") })
                 FilterChip(ready, { ready = !ready }, { Text("Ready now") })
                 FilterChip(duet, { duet = !duet }, { Text("Duets") })
