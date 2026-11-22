@@ -18,6 +18,7 @@ import io.github.yohann69.sing.protocol.Suggestion
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
@@ -105,6 +106,16 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
 
     suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false, favoritesOf: Long? = null): SearchResponse =
         get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null, "favorites" to favoritesOf)
+
+    suspend fun humSearch(audio: ByteArray): List<SongSummary> {
+        val r = http.post(endpoint.base + "/v1/hum") {
+            token?.let { header("Authorization", "Bearer $it") }
+            contentType(ContentType.parse("audio/mp4"))
+            setBody(audio)
+            timeout { requestTimeoutMillis = 30_000 }
+        }
+        return json.decodeFromString<SearchResponse>(check(r)).songs
+    }
 
     suspend fun recap(): PartyRecap = get("/v1/recap")
     suspend fun songSettings(id: Long): SongSettings = get("/v1/songs/$id/settings")

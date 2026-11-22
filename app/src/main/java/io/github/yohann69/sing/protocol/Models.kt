@@ -77,6 +77,8 @@ data class NowPlaying(
     val keyShift: Int = 0,
     val tempo: Double = 1.0,
     val lyricOffsetMs: Int = 0,
+    val loopStartMs: Int? = null,
+    val loopEndMs: Int? = null,
 ) {
     fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
         if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
@@ -243,6 +245,7 @@ data class PerformanceResult(
     val recordingID: Long? = null,
     val shareURL: String? = null,
     val perSinger: List<RankedName>? = null,
+    val applause: Int? = null,
 )
 
 @Serializable
@@ -258,6 +261,7 @@ data class PartyRecap(
     val bestSong: String? = null,
     val topArtist: String? = null,
     val highlights: List<String> = emptyList(),
+    val reelURL: String? = null,
 )
 
 @Serializable
@@ -327,6 +331,7 @@ data class LyricLine(
     val segments: List<LyricSegment>,
     val background: List<LyricSegment> = emptyList(),
     val translation: String? = null,
+    val romanization: String? = null,
 ) {
     val text: String get() = segments.joinToString("") { it.text + if (it.endsWord) " " else "" }.trim()
 }
@@ -384,8 +389,9 @@ object ClientMessage {
     private inline fun <reified T> enc(v: T) = SingProtocol.json.encodeToJsonElement(v)
 
     fun auth(token: String) = msg("auth", buildJsonObject { put("token", token) })
-    fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean) =
-        msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext) })
+    fun enqueue(songID: Long, singerIDs: List<Long>, playNext: Boolean, battle: Boolean = false) =
+        msg("enqueue", buildJsonObject { put("songID", songID); put("singerIDs", enc(singerIDs)); put("playNext", playNext); if (battle) put("battle", true) })
+    fun setLoop(startMs: Int?, endMs: Int?) = msg("setLoop", buildJsonObject { startMs?.let { put("startMs", it) }; endMs?.let { put("endMs", it) } })
     fun remove(entryID: String) = msg("remove", buildJsonObject { put("entryID", entryID) })
     fun move(entryID: String, toIndex: Int) = msg("move", buildJsonObject { put("entryID", entryID); put("toIndex", toIndex) })
     fun transport(command: String) = msg("transport", buildJsonObject { put("command", command) })

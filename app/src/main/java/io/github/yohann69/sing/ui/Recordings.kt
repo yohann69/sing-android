@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Stop
@@ -123,4 +124,40 @@ fun RecordingsSection(vm: PadViewModel) {
             }
         }
     }
+}
+
+/** Records eight seconds of humming and asks the Mac which song it is. */
+@Composable
+fun HumButton(vm: PadViewModel, onResult: (List<io.github.yohann69.sing.protocol.SongSummary>) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var recording by remember { mutableStateOf(false) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        if (!ok) vm.showToast("Allow the microphone to hum a song")
+    }
+    IconButton({
+        if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            ask.launch(android.Manifest.permission.RECORD_AUDIO); return@IconButton
+        }
+        if (recording) return@IconButton
+        val file = java.io.File(ctx.cacheDir, "hum.m4a")
+        val rec = (if (android.os.Build.VERSION.SDK_INT >= 31) android.media.MediaRecorder(ctx) else @Suppress("DEPRECATION") android.media.MediaRecorder()).apply {
+            setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+            setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+            setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+            setAudioSamplingRate(16000)
+            setAudioEncodingBitRate(48000)
+            setOutputFile(file.absolutePath)
+            prepare()
+            start()
+        }
+        recording = true
+        vm.showToast("Hum the chorus for 8 seconds…")
+        scope.launch {
+            kotlinx.coroutines.delay(8000)
+            runCatching { rec.stop() }; rec.release()
+            recording = false
+            vm.humSearch(file, onResult)
+        }
+    }) { Icon(if (recording) Icons.Rounded.Stop else Icons.Rounded.Mic, "Hum to search") }
 }

@@ -202,8 +202,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { onDone(it.message) }
     }
 
-    fun enqueue(song: SongSummary, singers: List<Long>, playNext: Boolean) {
-        client?.send(ClientMessage.enqueue(song.id, singers, playNext))
+    fun enqueue(song: SongSummary, singers: List<Long>, playNext: Boolean, battle: Boolean = false) {
+        client?.send(ClientMessage.enqueue(song.id, singers, playNext, battle && singers.size >= 2))
         showToast(if (playNext) "${song.title} plays next" else "${song.title} added to the queue")
     }
 
@@ -218,6 +218,20 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     fun guideVocal(v: Double) = client?.send(ClientMessage.setGuideVocal(v))
     fun setKey(k: Int) = client?.send(ClientMessage.setKey(k.coerceIn(-6, 6)))
     fun setLyricOffset(ms: Int) = client?.send(ClientMessage.setLyricOffset(ms.coerceIn(-5000, 5000)))
+    /** Loops [count] lyric lines from the one being sung, for practice. */
+    fun loopLines(count: Int) {
+        val l = _lyrics.value ?: return
+        val t = _state.value.nowPlaying.estimatedPositionMs() / 1000.0
+        val i = l.lineIndex(t) ?: l.lines.indexOfFirst { it.start > t }.takeIf { it >= 0 } ?: return
+        val last = minOf(l.lines.size - 1, i + count - 1)
+        client?.send(ClientMessage.setLoop(((l.lines[i].start - 1.0).coerceAtLeast(0.0) * 1000).toInt(), ((l.lines[last].end + 0.6) * 1000).toInt()))
+    }
+    fun stopLoop() = client?.send(ClientMessage.setLoop(null, null))
+
+    fun humSearch(file: java.io.File, onResult: (List<SongSummary>) -> Unit) = viewModelScope.launch {
+        runCatching { client?.humSearch(file.readBytes()) }.onSuccess { onResult(it ?: emptyList()) }.onFailure { showToast(it.message ?: "Could not search") }
+    }
+
     fun setTempo(t: Double) = client?.send(ClientMessage.setTempo(t.coerceIn(0.75, 1.25)))
     fun updateSettings(change: (SingSettings) -> SingSettings) {
         val s = change(_state.value.settings)

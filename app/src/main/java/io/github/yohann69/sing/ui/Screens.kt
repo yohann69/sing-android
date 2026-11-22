@@ -264,6 +264,7 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                             Text(r.comment, color = Ember.text.copy(alpha = 0.8f))
                             Text(r.categories.joinToString("  ·  ") { "${it.name} ${it.value}" }, style = MaterialTheme.typography.bodySmall)
                             r.perSinger?.takeIf { it.size > 1 }?.let { parts -> Text(parts.joinToString("  ·  ") { "${it.name} ${it.count}" }, fontWeight = FontWeight.SemiBold) }
+                            r.applause?.let { Text("👏 $it", fontWeight = FontWeight.SemiBold) }
                             r.recordingID?.let { id -> RecordingPlayButton(vm, id, r.shareURL) }
                         }
                     }
@@ -275,6 +276,9 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                         val i = l?.lineIndex(pos + 0.15)
                         AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
                             Text(if (l != null && idx != null) karaoke(l.lines[idx], pos) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
+                        }
+                        i?.let { l?.lines?.getOrNull(it)?.romanization }?.let { ro ->
+                            Text(ro, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.75f))
                         }
                         i?.let { l?.lines?.getOrNull(it)?.translation }?.let { tr ->
                             Text(tr, style = LyricStyle.copy(fontSize = 18.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = Ember.accentSoft)
@@ -392,6 +396,7 @@ fun SearchScreen(vm: PadViewModel) {
     var ready by remember { mutableStateOf(false) }
     var duet by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(false) }
+    var hum by remember { mutableStateOf<List<SongSummary>?>(null) }
     val me by vm.singerId.collectAsState()
     val ratings by vm.ratings.collectAsState()
     var result by remember { mutableStateOf(SearchResponse(emptyList(), 0)) }
@@ -405,13 +410,19 @@ fun SearchScreen(vm: PadViewModel) {
     Box(Modifier.fillMaxSize()) {
         BlobBackground(null)
         Column(Modifier.fillMaxSize().padding(20.dp)) {
-            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, placeholder = { Text("Any song or artist") }, singleLine = true, shape = RoundedCornerShape(28.dp))
+            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, trailingIcon = { HumButton(vm) { hum = it } },
+                placeholder = { Text("Any song or artist, or hum it") }, singleLine = true, shape = RoundedCornerShape(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
                 FilterChip(favorites, { favorites = !favorites }, { Text("Favorites") })
                 FilterChip(ready, { ready = !ready }, { Text("Ready now") })
                 FilterChip(duet, { duet = !duet }, { Text("Duets") })
             }
             LazyColumn(Modifier.fillMaxSize()) {
+                hum?.takeIf { q.isBlank() }?.let { h ->
+                    item { Text("Sounds like", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
+                    if (h.isEmpty()) item { Text("No match. Hum the chorus a bit longer.") }
+                    items(h) { s -> SongRow(vm, s, s.artist) { song = s } }
+                }
                 if (result.songs.isNotEmpty()) item { Text("In the library", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
                 items(result.songs) { s -> SongRow(vm, s, s.artist) { song = s } }
                 if (result.catalog.isNotEmpty()) item { Text("Not in the library yet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp)) }
@@ -465,6 +476,7 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
     val me by vm.singerId.collectAsState()
     var picked by remember { mutableStateOf(setOfNotNull(me)) }
     var editing by remember { mutableStateOf(false) }
+    var battle by remember { mutableStateOf(false) }
     if (editing) SongSettingsDialog(vm, s.id) { editing = false }
     AlertDialog(
         onDismissRequest = dismiss,
@@ -481,9 +493,10 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.singers.forEach { x -> FilterChip(x.id in picked, { picked = if (x.id in picked) picked - x.id else picked + x.id }, { Text(x.name) }, leadingIcon = { SingerDot(x) }) }
                 }
+                if (picked.size >= 2) Row(verticalAlignment = Alignment.CenterVertically) { Text("Battle: take turns, best score wins", Modifier.weight(1f)); Switch(battle, { battle = it }) }
             }
         },
-        confirmButton = { Button({ vm.enqueue(s, picked.toList(), false); dismiss() }) { Text("Add to queue") } },
+        confirmButton = { Button({ vm.enqueue(s, picked.toList(), false, battle); dismiss() }) { Text("Add to queue") } },
         dismissButton = { if (vm.isHost) TextButton({ vm.enqueue(s, picked.toList(), true); dismiss() }) { Text("Play next") } else TextButton(dismiss) { Text("Cancel") } },
     )
 }
@@ -527,6 +540,7 @@ fun StatsScreen(vm: PadViewModel) {
                                 Text(r.name ?: "Last party", style = MaterialTheme.typography.titleMedium)
                                 Text("${r.songs} songs · ${r.minutes} minutes · ${r.singers} singers", fontWeight = FontWeight.Bold)
                                 r.highlights.forEach { Text(it) }
+                                r.reelURL?.let { url -> val ctx = androidx.compose.ui.platform.LocalContext.current; TextButton({ shareLink(ctx, url) }) { Text("Share the night's highlights") } }
                             }
                         }
                     }
@@ -713,6 +727,11 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                     Text("Lyric timing " + if (np.lyricOffsetMs == 0) "as found" else "%+d ms".format(np.lyricOffsetMs), Modifier.weight(1f))
                     TextButton({ vm.setLyricOffset(np.lyricOffsetMs - 100) }) { Text("Earlier") }
                     TextButton({ vm.setLyricOffset(np.lyricOffsetMs + 100) }) { Text("Later") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Practice", Modifier.weight(1f))
+                    if (np.loopStartMs != null) TextButton({ vm.stopLoop() }) { Text("Stop loop") }
+                    else { TextButton({ vm.loopLines(1) }) { Text("Loop line") }; TextButton({ vm.loopLines(4) }) { Text("Loop 4") } }
                 }
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
