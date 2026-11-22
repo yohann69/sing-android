@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import io.github.yohann69.sing.protocol.ClientMessage
+import io.github.yohann69.sing.protocol.*
 import io.github.yohann69.sing.protocol.ErrorBody
 import io.github.yohann69.sing.protocol.Lyrics
 import io.github.yohann69.sing.protocol.PairRequest
@@ -24,10 +24,12 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.websocket.Frame
@@ -64,6 +66,8 @@ class ApiException(message: String, val code: String) : Exception(message)
 
 /** HTTP calls to the Mac, plus the live WebSocket on the next port up. */
 class SingClient(val endpoint: Endpoint, var token: String? = null) {
+    /** From [unlockOwner], for owner-only calls when the Mac has an owner PIN. */
+    var ownerToken: String? = null
     private val json = SingProtocol.json
     private val http = HttpClient(OkHttp) {
         install(WebSockets)
@@ -83,6 +87,7 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
     private suspend inline fun <reified T> get(path: String, vararg q: Pair<String, Any?>): T {
         val r = http.get(endpoint.base + path) {
             token?.let { header("Authorization", "Bearer $it") }
+            ownerToken?.let { header("X-Sing-Owner", it) }
             q.forEach { (k, v) -> if (v != null) parameter(k, v) }
         }
         return json.decodeFromString(check(r))
@@ -98,8 +103,27 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
 
     @Serializable private data class NewSinger(val name: String, val emoji: String?)
 
-    suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false): SearchResponse =
-        get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null)
+    suspend fun search(q: String, readyOnly: Boolean = false, duetOnly: Boolean = false, favoritesOf: Long? = null): SearchResponse =
+        get("/v1/songs", "q" to q, "ready" to if (readyOnly) "1" else null, "duet" to if (duetOnly) "1" else null, "favorites" to favoritesOf)
+
+    suspend fun ratings(singer: Long): List<SongRating> = get("/v1/ratings", "singer" to singer)
+    suspend fun rate(r: SongRating): SongRating = send(HttpMethod.Post, "/v1/ratings", json.encodeToString(SongRating.serializer(), r))
+    suspend fun unlockOwner(pin: String): OwnerSession = send(HttpMethod.Post, "/v1/owner/unlock", "{\"pin\":\"${pin.filter { it.isDigit() }}\"}")
+    suspend fun ownerOverview(): OwnerOverview = get("/v1/owner")
+    suspend fun clearCache(r: ClearCacheRequest): ClearCacheResult = send(HttpMethod.Post, "/v1/owner/storage/clear", json.encodeToString(ClearCacheRequest.serializer(), r))
+    suspend fun updateOwnerSettings(s: SingSettings): SingSettings = send(HttpMethod.Put, "/v1/owner/settings", json.encodeToString(SingSettings.serializer(), s))
+    suspend fun unpair(padID: String) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Delete, "/v1/owner/pads/$padID", "{}") }
+
+    private suspend inline fun <reified T> send(method: HttpMethod, path: String, body: String): T {
+        val r = http.request(endpoint.base + path) {
+            this.method = method
+            token?.let { header("Authorization", "Bearer $it") }
+            ownerToken?.let { header("X-Sing-Owner", it) }
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        return json.decodeFromString(check(r))
+    }
     suspend fun lyrics(id: Long, translateTo: String? = null): Lyrics = get("/v1/songs/$id/lyrics", "translate" to translateTo)
 
     @Serializable data class Language(val code: String, val name: String)

@@ -127,7 +127,54 @@ data class SingSettings(
     val theme: ThemeSettings = ThemeSettings(),
     val queue: JsonElement? = null,
     val services: JsonElement? = null,
+    val storage: StorageSettings = StorageSettings(),
+    val system: SystemSettings = SystemSettings(),
+    val network: NetworkSettings = NetworkSettings(),
 )
+
+@Serializable
+data class StorageSettings(val limitGB: Double = 0.0, val stemsLimitGB: Double = 0.0, val lowDiskWarningGB: Double = 10.0, val autoFree: Boolean = true)
+
+@Serializable
+data class SystemSettings(val processLibraryInBackground: Boolean = true, val pauseProcessingWhileSinging: Boolean = true, val restAfterMinutes: Double = 0.0)
+
+@Serializable
+data class NetworkSettings(val bonjourName: String = "", val port: Int = 47800, val maxPads: Int = 0)
+
+@Serializable
+data class SongRating(val songID: Long, val singerID: Long, val value: Int = 0, val favorite: Boolean = false, val neverSuggest: Boolean = false)
+
+@Serializable
+data class StorageCategory(val id: String, val name: String, val bytes: Long, val items: Int, val clearable: Boolean)
+
+@Serializable
+data class SongUsage(val id: Long, val title: String, val artist: String, val bytes: Long, val lastPlayedAt: Double? = null, val pinned: Boolean = false)
+
+@Serializable
+data class StorageReport(
+    val categories: List<StorageCategory>,
+    val totalBytes: Long,
+    val diskFreeBytes: Long,
+    val diskTotalBytes: Long,
+    val limitBytes: Long? = null,
+    val lowDisk: Boolean = false,
+    val biggestSongs: List<SongUsage> = emptyList(),
+)
+
+@Serializable
+data class ClearCacheRequest(val category: String? = null, val songID: Long? = null, val notPlayedForDays: Int? = null, val dryRun: Boolean = false)
+
+@Serializable
+data class ClearCacheResult(val freedBytes: Long, val songs: Int)
+
+@Serializable
+data class PadInfo(val id: String, val name: String, val model: String? = null, val role: PadRole, val pairedAt: Double, val lastSeenAt: Double? = null, val connected: Boolean = false)
+
+@Serializable
+data class OwnerSession(val ownerToken: String, val expiresAt: Double)
+
+@Serializable
+data class OwnerOverview(val pinRequired: Boolean, val services: JsonElement? = null, val storage: StorageReport, val pads: List<PadInfo>, val processingPaused: Boolean = false)
 
 @Serializable
 data class SessionInfo(val id: Long, val name: String? = null, val startedAt: Double, val playCount: Int)

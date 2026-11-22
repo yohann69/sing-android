@@ -29,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Tune
@@ -385,12 +387,15 @@ fun SearchScreen(vm: PadViewModel) {
     var q by remember { mutableStateOf("") }
     var ready by remember { mutableStateOf(false) }
     var duet by remember { mutableStateOf(false) }
+    var favorites by remember { mutableStateOf(false) }
+    val me by vm.singerId.collectAsState()
+    val ratings by vm.ratings.collectAsState()
     var result by remember { mutableStateOf(SearchResponse(emptyList(), 0)) }
     var song by remember { mutableStateOf<SongSummary?>(null) }
     var track by remember { mutableStateOf<CatalogTrack?>(null) }
-    LaunchedEffect(q, ready, duet) {
+    LaunchedEffect(q, ready, duet, favorites, ratings.size) {
         delay(250)
-        if (q.isNotBlank()) runCatching { vm.client?.search(q, ready, duet) }.getOrNull()?.let { result = it }
+        if (q.isNotBlank() || favorites) runCatching { vm.client?.search(q, ready, duet, if (favorites) me else null) }.getOrNull()?.let { result = it }
         else result = SearchResponse(emptyList(), 0)
     }
     Box(Modifier.fillMaxSize()) {
@@ -398,6 +403,7 @@ fun SearchScreen(vm: PadViewModel) {
         Column(Modifier.fillMaxSize().padding(20.dp)) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Rounded.Search, null) }, placeholder = { Text("Any song or artist") }, singleLine = true, shape = RoundedCornerShape(28.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+                FilterChip(favorites, { favorites = !favorites }, { Text("Favorites") })
                 FilterChip(ready, { ready = !ready }, { Text("Ready now") })
                 FilterChip(duet, { duet = !duet }, { Text("Duets") })
             }
@@ -426,8 +432,14 @@ fun SearchScreen(vm: PadViewModel) {
 @Composable
 fun SongRow(vm: PadViewModel, s: SongSummary, detail: String, onClick: () -> Unit) {
     val state by vm.state.collectAsState()
+    val ratings by vm.ratings.collectAsState()
     ListItem(
-        headlineContent = { Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (ratings[s.id]?.favorite == true) Icon(Icons.Rounded.Favorite, "Favorite", Modifier.padding(start = 6.dp).size(14.dp), tint = Color(0xFFFF6B9A))
+            }
+        },
         supportingContent = { Text(detail, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingContent = { Artwork(vm, s, 52, 10) },
         trailingContent = {
@@ -455,7 +467,9 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
         text = {
             Column {
                 Text("${s.artist} · ${durationText(s.durationMs)}")
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
+                RatingRow(vm, s.id)
+                Spacer(Modifier.height(8.dp))
                 Text(if (s.isDuet) "Duet: pick two singers" else "Who sings?", fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.singers.forEach { x -> FilterChip(x.id in picked, { picked = if (x.id in picked) picked - x.id else picked + x.id }, { Text(x.name) }, leadingIcon = { SingerDot(x) }) }
@@ -539,7 +553,9 @@ fun SettingsScreen(vm: PadViewModel) {
     val languages by vm.languages.collectAsState()
     LaunchedEffect(Unit) { vm.loadLanguages() }
     var picking by remember { mutableStateOf(false) }
+    var owner by remember { mutableStateOf(false) }
     if (picking) SingerPicker(vm) { picking = false }
+    if (owner) OwnerDialog(vm) { owner = false }
     fun setTv(change: (TVDisplaySettings) -> TVDisplaySettings) = vm.updateSettings { it.copy(tv = change(it.tv)) }
     LazyColumn(Modifier.fillMaxSize().background(Ember.background), contentPadding = PaddingValues(20.dp)) {
         item {
@@ -556,6 +572,7 @@ fun SettingsScreen(vm: PadViewModel) {
             item { Text("Only host pads can change the TV display and party settings.") }
             return@LazyColumn
         }
+        item { ListItem({ Text("Owner area") }, supportingContent = { Text("Storage, devices, processing, lyrics sources") }, leadingContent = { Icon(Icons.Rounded.Lock, null) }, modifier = Modifier.clickable { owner = true }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
         item { Header("Lyrics on the TV") }
         item { Toggle("Previous line", tv.showPreviousLine) { v -> setTv { it.copy(showPreviousLine = v) } } }
         item { Toggle("Next line", tv.showNextLine) { v -> setTv { it.copy(showNextLine = v) } } }

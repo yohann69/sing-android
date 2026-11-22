@@ -8,6 +8,9 @@ import io.github.yohann69.sing.net.Discovery
 import io.github.yohann69.sing.net.Endpoint
 import io.github.yohann69.sing.net.SingClient
 import io.github.yohann69.sing.protocol.CatalogTrack
+import io.github.yohann69.sing.protocol.SongRating
+import io.github.yohann69.sing.protocol.OwnerOverview
+import io.github.yohann69.sing.protocol.ClearCacheRequest
 import io.github.yohann69.sing.protocol.ClientMessage
 import io.github.yohann69.sing.protocol.LiveState
 import io.github.yohann69.sing.protocol.Lyrics
@@ -91,6 +94,53 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         val c = SingClient(s.endpoint, s.token)
         client = c
         live = c.runLive(viewModelScope, onStatus = { _connected.value = it }) { m -> handle(m) }
+        loadRatings()
+    }
+
+    private val _ratings = MutableStateFlow<Map<Long, SongRating>>(emptyMap())
+    /** The current singer's thumbs, favorites and never-suggest marks. */
+    val ratings: StateFlow<Map<Long, SongRating>> = _ratings.asStateFlow()
+
+    fun loadRatings() = viewModelScope.launch {
+        val id = _singer.value ?: return@launch run { _ratings.value = emptyMap() }
+        runCatching { client?.ratings(id) }.getOrNull()?.let { list -> _ratings.value = list.associateBy { it.songID } }
+    }
+
+    fun rate(songId: Long, change: (SongRating) -> SongRating) {
+        val singer = _singer.value ?: return showToast("Pick who you are first")
+        val r = change(_ratings.value[songId] ?: SongRating(songId, singer))
+        _ratings.update { it + (songId to r) }
+        viewModelScope.launch { runCatching { client?.rate(r) } }
+    }
+
+    private val _owner = MutableStateFlow<OwnerOverview?>(null)
+    val owner: StateFlow<OwnerOverview?> = _owner.asStateFlow()
+    private val _ownerLocked = MutableStateFlow(false)
+    val ownerLocked: StateFlow<Boolean> = _ownerLocked.asStateFlow()
+
+    fun loadOwner() = viewModelScope.launch {
+        runCatching { client?.ownerOverview() }
+            .onSuccess { _owner.value = it; _ownerLocked.value = false }
+            .onFailure { e -> if ((e as? io.github.yohann69.sing.net.ApiException)?.code == "owner") _ownerLocked.value = true else showToast(e.message ?: "Could not load") }
+    }
+
+    fun unlockOwner(pin: String) = viewModelScope.launch {
+        runCatching { client?.unlockOwner(pin) }
+            .onSuccess { s -> client?.ownerToken = s?.ownerToken; loadOwner() }
+            .onFailure { showToast(it.message ?: "Wrong PIN") }
+    }
+
+    fun clearCache(r: ClearCacheRequest) = viewModelScope.launch {
+        runCatching { client?.clearCache(r) }.getOrNull()?.let { showToast("Freed ${android.text.format.Formatter.formatShortFileSize(getApplication(), it.freedBytes)}") }
+        loadOwner()
+    }
+
+    fun unpair(padID: String) = viewModelScope.launch { runCatching { client?.unpair(padID) }; loadOwner() }
+
+    fun updateOwnerSettings(change: (SingSettings) -> SingSettings) {
+        val s = change(_state.value.settings)
+        _state.update { it.copy(settings = s) }
+        viewModelScope.launch { runCatching { client?.updateOwnerSettings(s) } }
     }
 
     fun disconnect() {
@@ -139,7 +189,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         refreshLyrics()
     }
 
-    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply() }
+    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings() }
 
     fun createSinger(name: String, onDone: (String?) -> Unit) = viewModelScope.launch {
         runCatching { client!!.createSinger(name, null) }
