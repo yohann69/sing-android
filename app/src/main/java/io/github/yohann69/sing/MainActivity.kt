@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (resources.configuration.smallestScreenWidthDp >= 600) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         handle(intent)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         setContent { SingTheme { App(vm, ::scan) } }
     }
 

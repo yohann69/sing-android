@@ -44,6 +44,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     private val _singer = MutableStateFlow(prefs.getLong("singer", -1).takeIf { it >= 0 })
     val singerId: StateFlow<Long?> = _singer.asStateFlow()
 
+    private val notifier = Notifier(app)
+
     var client: SingClient? = null
         private set
     private var live: Job? = null
@@ -93,7 +95,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         live?.cancel(); client?.close()
         val c = SingClient(s.endpoint, s.token)
         client = c
-        live = c.runLive(viewModelScope, onStatus = { _connected.value = it }) { m -> handle(m) }
+        live = c.runLive(viewModelScope, onStatus = { _connected.value = it; if (!it) notifier.clear() }) { m -> handle(m) }
         loadRatings()
     }
 
@@ -146,13 +148,14 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnect() {
+        notifier.clear()
         live?.cancel(); client?.close(); client = null
         persist(null); prefs.edit().putString("translate", _language.value).apply(); _saved.value = null; _state.value = LiveState(); _connected.value = false
     }
 
     private fun handle(m: ServerMessage) {
         when (m) {
-            is ServerMessage.State -> { _state.value = m.state; refreshLyrics() }
+            is ServerMessage.State -> { _state.value = m.state; refreshLyrics(); notifier.update(m.state, _singer.value, true) }
             is ServerMessage.Position -> _state.update { it.copy(nowPlaying = it.nowPlaying.copy(positionMs = m.positionMs, positionAt = m.at)) }
             is ServerMessage.Progress -> _state.update {
                 val map = it.preparingByID.toMutableMap()
