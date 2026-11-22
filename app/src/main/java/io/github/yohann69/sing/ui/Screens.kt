@@ -5,6 +5,7 @@ import io.github.yohann69.sing.tr
 import androidx.compose.animation.AnimatedContent
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.animateFloat
 import io.github.yohann69.sing.protocol.micPresets
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -286,16 +287,17 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                     Column {
                         val l = lyrics
                         val i = l?.lineIndex(pos + 0.15)
-                        AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
+                        val pause = l?.breakProgress(pos)
+                        if (pause != null) PauseDots(pause) else AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
                             Text(if (l != null && idx != null) karaoke(l.lines[idx], pos, voiceColor(l, l.lines[idx], state.settings.tv.showSingerNames)) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
                         }
-                        i?.let { l?.lines?.getOrNull(it)?.romanization }?.let { ro ->
+                        i?.takeIf { pause == null }?.let { l?.lines?.getOrNull(it)?.romanization }?.let { ro ->
                             Text(ro, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.75f))
                         }
-                        i?.let { l?.lines?.getOrNull(it)?.translation }?.let { tr ->
+                        i?.takeIf { pause == null }?.let { l?.lines?.getOrNull(it)?.translation }?.let { tr ->
                             Text(tr, style = LyricStyle.copy(fontSize = 18.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = Ember.accentSoft)
                         }
-                        val next = i?.let { l?.lines?.getOrNull(it + 1) } ?: l?.lines?.firstOrNull()?.takeIf { i == null }
+                        val next = (i?.let { l?.lines?.getOrNull(it + 1) } ?: l?.lines?.firstOrNull()?.takeIf { i == null })?.takeIf { pause == null }
                         next?.let { Text(it.text, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.5f)) }
                         Spacer(Modifier.height(10.dp))
                         val dur = (np.entry.song.durationMs / 1000.0).coerceAtLeast(1.0)
@@ -847,3 +849,17 @@ private fun MixSlider(label: String, value: Double, onChange: (Double) -> Unit) 
 
 fun voiceColor(l: io.github.yohann69.sing.protocol.Lyrics, line: LyricLine, on: Boolean): Color? =
     if (!on) null else l.voiceIndex(line)?.let { Color(io.github.yohann69.sing.protocol.voicePalette[it % io.github.yohann69.sing.protocol.voicePalette.size]) }
+
+/** Three dots that breathe and fill across a pause in the singing. */
+@Composable
+fun PauseDots(progress: Double, size: Int = 14) {
+    val breathe by androidx.compose.animation.core.rememberInfiniteTransition(label = "pause").animateFloat(
+        0.92f, 1.08f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1200), androidx.compose.animation.core.RepeatMode.Reverse), label = "breathe")
+    Row(horizontalArrangement = Arrangement.spacedBy((size * 0.85).dp), modifier = Modifier.padding(vertical = 14.dp)) {
+        for (i in 0 until 3) {
+            val fill = (progress * 3 - i).coerceIn(0.0, 1.0).toFloat()
+            val sc = (0.82f + 0.18f * fill) * breathe
+            Box(Modifier.size((size * sc).dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f + 0.73f * fill)))
+        }
+    }
+}

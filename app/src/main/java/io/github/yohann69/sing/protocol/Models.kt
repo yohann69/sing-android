@@ -403,6 +403,17 @@ data class Lyrics(val kind: LyricsKind, val source: String, val language: String
         lines.mapNotNull { it.agent }.filter { it !in groups }.distinct()
     }
 
+    /** During a pause of several seconds, how far through it we are (0 to 1); null while singing or just before the next line. */
+    fun breakProgress(t: Double): Double? {
+        val next = lines.indexOfFirst { it.start > t }.takeIf { it >= 0 } ?: return null
+        val prevEnd = if (next > 0) lines[next - 1].end else 0.0
+        if (lines[next].start - prevEnd < 4.5) return null
+        val start = if (next > 0) prevEnd + 0.6 else 0.0
+        val resume = lines[next].start - 1.4
+        if (t < start || t >= resume) return null
+        return (t - start) / maxOf(0.5, resume - start)
+    }
+
     /** Which voice sings this line when there are two or more; null otherwise. */
     fun voiceIndex(line: LyricLine): Int? = if (voices.size < 2) null else line.agent?.let { voices.indexOf(it).takeIf { i -> i >= 0 } }
 
