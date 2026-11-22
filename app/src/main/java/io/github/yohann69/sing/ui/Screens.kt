@@ -791,52 +791,74 @@ private fun LanguagePicker(label: String, value: String?, options: List<io.githu
 fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
     val state by vm.state.collectAsState()
     val p = state.settings.playback
-    AlertDialog(
-        onDismissRequest = dismiss,
-        title = { Text(tr("Mixer")) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MixSlider(tr("Guide vocal"), state.nowPlaying.guideVocal) { vm.guideVocal(it) }
-                MixSlider(tr("Music volume"), p.musicVolume) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(musicVolume = v)) } }
-                val np = state.nowPlaying
+    val np = state.nowPlaying
+    val micOn by vm.phoneMicOn.collectAsState()
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = dismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Ember.background) {
+        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 24.dp), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Key ") + if (np.keyShift == 0) "original" else "%+d".format(np.keyShift), Modifier.weight(1f))
-                    TextButton({ vm.setKey(np.keyShift - 1) }) { Text("−") }
-                    TextButton({ vm.setKey(np.keyShift + 1) }) { Text("+") }
+                    Text(tr("Mixer"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    TextButton(dismiss) { Text(tr("Done")) }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Tempo ${(np.tempo * 100).roundToInt()}%", Modifier.weight(1f))
-                    TextButton({ vm.setTempo(np.tempo - 0.05) }) { Text("−") }
-                    TextButton({ vm.setTempo(np.tempo + 0.05) }) { Text("+") }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Lyric timing ") + if (np.lyricOffsetMs == 0) "as found" else "%+d ms".format(np.lyricOffsetMs), Modifier.weight(1f))
-                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs - 100) }) { Text(tr("Earlier")) }
-                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs + 100) }) { Text(tr("Later")) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Practice"), Modifier.weight(1f))
-                    if (np.loopStartMs != null) TextButton({ vm.stopLoop() }) { Text(tr("Stop loop")) }
-                    else { TextButton({ vm.loopLines(1) }) { Text(tr("Loop line")) }; TextButton({ vm.loopLines(4) }) { Text(tr("Loop 4")) } }
-                }
-                HorizontalDivider()
+            }
+            item { SheetHeader(tr("Music")) }
+            item { MixSlider(tr("Guide vocal"), np.guideVocal) { vm.guideVocal(it) } }
+            item { MixSlider(tr("Music volume"), p.musicVolume) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(musicVolume = v)) } } }
+            item { StepRow(tr("Key"), if (np.keyShift == 0) tr("Original") else "%+d".format(np.keyShift), { vm.setKey(np.keyShift - 1) }, { vm.setKey(np.keyShift + 1) }) }
+            item { StepRow(tr("Lyric timing"), if (np.lyricOffsetMs == 0) tr("As found") else "%+d ms".format(np.lyricOffsetMs), { vm.setLyricOffset(np.lyricOffsetMs - 100) }, { vm.setLyricOffset(np.lyricOffsetMs + 100) }) }
+            item { StepRow(tr("Tempo"), "${(np.tempo * 100).roundToInt()}%", { vm.setTempo(np.tempo - 0.05) }, { vm.setTempo(np.tempo + 0.05) }) }
+
+            item { SheetHeader(tr("Microphone")) }
+            item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Microphone"), Modifier.weight(1f))
                     Switch(p.micEnabled, { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEnabled = v)) } })
                 }
-                state.mic?.let { m -> Text(m.message ?: if (m.state == "running") "Live on ${m.deviceName ?: "the Mac's mic"}" else m.state, style = MaterialTheme.typography.bodySmall) }
-                MixSlider(tr("Mic volume"), p.micGain) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micGain = v)) } }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    micPresets.forEach { (k, l) -> FilterChip(p.micPreset == k, { vm.updateSettings { it.copy(playback = it.playback.copy(micPreset = k)) } }, { Text(l) }) }
-                }
-                MixSlider(tr("Reverb"), p.micReverb) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micReverb = v)) } }
-                MixSlider(tr("Echo"), p.micEcho) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEcho = v)) } }
-                MicSection(vm, p)
             }
-        },
-        confirmButton = { TextButton(dismiss) { Text(tr("Done")) } },
-    )
+            item { MixSlider(tr("Mic volume"), p.micGain) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micGain = v)) } } }
+            item {
+                Text(tr("Effect"), style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    micPresets.forEach { (k, l) -> FilterChip(p.micPreset == k, { vm.updateSettings { it.copy(playback = it.playback.copy(micPreset = k)) } }, { Text(tr(l)) }) }
+                }
+            }
+            item { MixSlider(tr("Reverb"), p.micReverb) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micReverb = v)) } } }
+            item { MixSlider(tr("Echo"), p.micEcho) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(micEcho = v)) } } }
+            item { state.mic?.let { m -> Text(m.message ?: if (m.state == "running") "Live on ${m.deviceName ?: "the Mac's mic"}" else m.state, style = MaterialTheme.typography.bodySmall, color = Ember.text.copy(alpha = 0.7f)) } }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Use this device as a mic"), Modifier.weight(1f))
+                    Switch(micOn, { vm.togglePhoneMic() })
+                }
+                Text(tr("Experimental: your voice goes to the Mac over Wi-Fi with a small delay. Use headphones off and keep away from the speakers."), style = MaterialTheme.typography.bodySmall, color = Ember.text.copy(alpha = 0.6f))
+            }
+            item { SheetHeader(tr("Microphones")) }
+            item { MicSection(vm, p) }
+
+            item { SheetHeader(tr("Practice")) }
+            item {
+                if (np.loopStartMs != null) TextButton({ vm.stopLoop() }) { Text(tr("Stop the loop")) }
+                else Row { TextButton({ vm.loopLines(1) }) { Text(tr("Loop this line")) }; TextButton({ vm.loopLines(4) }) { Text(tr("Loop the next four lines")) } }
+                Text(tr("A practice loop is not saved to the stats or recorded."), style = MaterialTheme.typography.bodySmall, color = Ember.text.copy(alpha = 0.6f))
+            }
+            item { SheetHeader(tr("Next songs")) }
+            item { MixSlider(tr("Default guide vocal"), p.defaultGuideVocal) { v -> vm.updateSettings { it.copy(playback = it.playback.copy(defaultGuideVocal = v)) } } }
+        }
+    }
 }
+
+@Composable
+private fun SheetHeader(t: String) = Text(t, style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp, bottom = 2.dp))
+
+@Composable
+private fun StepRow(label: String, value: String, minus: () -> Unit, plus: () -> Unit) =
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Text(value, fontWeight = FontWeight.SemiBold)
+        FilledTonalIconButton(minus, Modifier.padding(start = 12.dp).size(40.dp)) { Text("−", fontSize = 20.sp) }
+        FilledTonalIconButton(plus, Modifier.padding(start = 6.dp).size(40.dp)) { Text("+", fontSize = 20.sp) }
+    }
 
 @Composable
 private fun MixSlider(label: String, value: Double, onChange: (Double) -> Unit) {
