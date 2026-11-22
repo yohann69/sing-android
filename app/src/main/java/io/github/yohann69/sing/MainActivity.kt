@@ -54,8 +54,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (resources.configuration.smallestScreenWidthDp >= 600) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         handle(intent)
-        if (android.os.Build.VERSION.SDK_INT >= 33) registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        setContent { SingTheme { App(vm, ::scan) } }
+        setContent {
+            val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+            LaunchedEffect(Unit) { if (android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+            SingTheme { App(vm, ::scan) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
