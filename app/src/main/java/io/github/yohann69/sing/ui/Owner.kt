@@ -90,6 +90,8 @@ fun OwnerDialog(vm: PadViewModel, dismiss: () -> Unit) {
     var pin by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf<ClearCacheRequest?>(null) }
     LaunchedEffect(Unit) { vm.loadOwner() }
+    var audit by remember { mutableStateOf(emptyList<io.github.yohann69.sing.protocol.AuditEntry>()) }
+    LaunchedEffect(overview) { if (overview != null) audit = runCatching { vm.client?.auditLog() }.getOrNull() ?: emptyList() }
     Dialog(dismiss, DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Ember.background)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -140,6 +142,19 @@ fun OwnerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                         trailingContent = { IconButton({ confirm = ClearCacheRequest(songID = s.id) }) { Icon(Icons.Rounded.Delete, "Clear") } },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
+                item { Text("Who can change what", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
+                listOf("tv" to "TV display", "playback" to "Playback and mics", "queue" to "Queue rules", "theme" to "Theme").forEach { (k, l) ->
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(l, Modifier.weight(1f))
+                            listOf("guests" to "Guests", "hosts" to "Hosts", "mac" to "Mac").forEach { (v, n) ->
+                                androidx.compose.material3.FilterChip((state.settings.locks[k] ?: "hosts") == v, { vm.updateOwnerSettings { s -> s.copy(locks = s.locks + (k to v)) } }, { Text(n) })
+                            }
+                        }
+                    }
+                }
+                item { Text("Activity", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
+                items(audit.take(40)) { e -> ListItem({ Text("${e.who} ${e.action}") }, supportingContent = { Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(e.at.toLong()))) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
                 item { Text("Paired devices", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
                 items(o.pads) { p ->
                     ListItem({ Text(p.name) }, supportingContent = { Text((if (p.role.name == "host") "Host" else "Guest") + if (p.connected) " · connected" else "") },

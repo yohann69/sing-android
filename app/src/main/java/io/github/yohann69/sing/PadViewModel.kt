@@ -46,6 +46,37 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
 
     private val notifier = Notifier(app)
 
+    private val _meters = MutableStateFlow<List<Float>>(emptyList())
+    val meters: StateFlow<List<Float>> = _meters.asStateFlow()
+    private val _wishes = MutableStateFlow<Set<Long>>(emptySet())
+    val wishes: StateFlow<Set<Long>> = _wishes.asStateFlow()
+    private val _pinFor = MutableStateFlow<io.github.yohann69.sing.protocol.Singer?>(null)
+    val pinFor: StateFlow<io.github.yohann69.sing.protocol.Singer?> = _pinFor.asStateFlow()
+
+    fun loadWishes() = viewModelScope.launch {
+        val id = _singer.value ?: return@launch run { _wishes.value = emptySet() }
+        runCatching { client?.wishes(id) }.getOrNull()?.let { l -> _wishes.value = l.map { it.id }.toSet() }
+    }
+
+    fun toggleWish(song: Long) {
+        val singer = _singer.value ?: return showToast("Pick who you are first")
+        val on = song !in _wishes.value
+        _wishes.update { if (on) it + song else it - song }
+        viewModelScope.launch { runCatching { client?.setWish(singer, song, on) } }
+    }
+
+    /** Picks a profile, asking for its PIN first when it has one. */
+    fun choose(s: io.github.yohann69.sing.protocol.Singer) {
+        if (s.prefs?.hasPIN == true && !isHost) _pinFor.value = s else chooseSinger(s.id)
+    }
+    fun cancelPin() { _pinFor.value = null }
+    fun unlock(pin: String) = viewModelScope.launch {
+        val s = _pinFor.value ?: return@launch
+        runCatching { client?.unlockSinger(s.id, pin) }
+            .onSuccess { _pinFor.value = null; chooseSinger(s.id) }
+            .onFailure { showToast(it.message ?: "Wrong PIN") }
+    }
+
     var client: SingClient? = null
         private set
     private var live: Job? = null
@@ -167,6 +198,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
             is ServerMessage.Toast -> showToast(m.message)
             is ServerMessage.Error -> { showToast(m.body.message); if (m.body.code == "unauthorized") disconnect() }
             is ServerMessage.Hello -> {}
+            is ServerMessage.Meter -> _meters.value = m.levels
         }
     }
 
@@ -194,7 +226,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         refreshLyrics()
     }
 
-    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings() }
+    fun chooseSinger(id: Long) { _singer.value = id; prefs.edit().putLong("singer", id).apply(); loadRatings(); loadWishes() }
 
     fun createSinger(name: String, onDone: (String?) -> Unit) = viewModelScope.launch {
         runCatching { client!!.createSinger(name, null) }

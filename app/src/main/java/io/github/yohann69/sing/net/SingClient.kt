@@ -117,6 +117,21 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
         return json.decodeFromString<SearchResponse>(check(r)).songs
     }
 
+    suspend fun ask(q: String): SearchResponse = get("/v1/ask", "q" to q)
+    suspend fun duetSuggestions(a: Long, b: Long): List<Suggestion> = get("/v1/suggestions/duet", "a" to a, "b" to b)
+    suspend fun smartKey(song: Long, singer: Long): SmartKey = get("/v1/songs/$song/smartkey", "singer" to singer)
+    suspend fun singerStats(id: Long): SingerStats = get("/v1/stats/singers/$id")
+    suspend fun updateSingerPrefs(id: Long, p: SingerPrefs) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Put, "/v1/singers/$id/prefs", json.encodeToString(SingerPrefs.serializer(), p)) }
+    suspend fun setSingerPIN(id: Long, pin: String?) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/singers/$id/pin", if (pin == null) "{}" else "{\"pin\":\"${pin.filter(Char::isDigit)}\"}") }
+    suspend fun unlockSinger(id: Long, pin: String) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/singers/$id/unlock", "{\"pin\":\"${pin.filter(Char::isDigit)}\"}") }
+    suspend fun wishes(singer: Long): List<SongSummary> = get("/v1/singers/$singer/wishes")
+    suspend fun setWish(singer: Long, song: Long, on: Boolean) { send<kotlinx.serialization.json.JsonElement>(if (on) HttpMethod.Put else HttpMethod.Delete, "/v1/singers/$singer/wishes/$song", "{}") }
+    suspend fun queueNextWish(singer: Long): SearchResponse = send(HttpMethod.Post, "/v1/singers/$singer/wishes/next", "{}")
+    suspend fun settingsProfiles(): List<SettingsProfile> = get("/v1/settings/profiles")
+    suspend fun applySettingsProfile(name: String) { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Post, "/v1/settings/profiles/${Uri.encode(name)}/apply", "{}") }
+    suspend fun auditLog(): List<AuditEntry> = get("/v1/owner/audit")
+    suspend fun displayPitch(id: Long): kotlinx.serialization.json.JsonElement = get("/v1/songs/$id/pitch")
+
     suspend fun recap(): PartyRecap = get("/v1/recap")
     suspend fun songSettings(id: Long): SongSettings = get("/v1/songs/$id/settings")
     suspend fun updateSongSettings(id: Long, s: SongSettings): SongSettings = send(HttpMethod.Put, "/v1/songs/$id/settings", json.encodeToString(SongSettings.serializer(), s))
