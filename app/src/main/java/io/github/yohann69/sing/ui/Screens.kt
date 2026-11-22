@@ -463,6 +463,8 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
     val state by vm.state.collectAsState()
     val me by vm.singerId.collectAsState()
     var picked by remember { mutableStateOf(setOfNotNull(me)) }
+    var editing by remember { mutableStateOf(false) }
+    if (editing) SongSettingsDialog(vm, s.id) { editing = false }
     AlertDialog(
         onDismissRequest = dismiss,
         icon = { Artwork(vm, s, 120, 20) },
@@ -472,6 +474,7 @@ fun SongDialog(vm: PadViewModel, s: SongSummary, dismiss: () -> Unit) {
                 Text("${s.artist} · ${durationText(s.durationMs)}")
                 Spacer(Modifier.height(8.dp))
                 RatingRow(vm, s.id)
+                if (vm.isHost) TextButton({ editing = true }) { Text("Song settings") }
                 Spacer(Modifier.height(8.dp))
                 Text(if (s.isDuet) "Duet: pick two singers" else "Who sings?", fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -676,6 +679,11 @@ fun MixerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                     Text("Tempo ${(np.tempo * 100).roundToInt()}%", Modifier.weight(1f))
                     TextButton({ vm.setTempo(np.tempo - 0.05) }) { Text("−") }
                     TextButton({ vm.setTempo(np.tempo + 0.05) }) { Text("+") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Lyric timing " + if (np.lyricOffsetMs == 0) "as found" else "%+d ms".format(np.lyricOffsetMs), Modifier.weight(1f))
+                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs - 100) }) { Text("Earlier") }
+                    TextButton({ vm.setLyricOffset(np.lyricOffsetMs + 100) }) { Text("Later") }
                 }
                 HorizontalDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {

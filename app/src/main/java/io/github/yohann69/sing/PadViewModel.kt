@@ -135,6 +135,8 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
         loadOwner()
     }
 
+    fun saveSongSettings(id: Long, s: io.github.yohann69.sing.protocol.SongSettings) = viewModelScope.launch { runCatching { client?.updateSongSettings(id, s) } }
+
     fun unpair(padID: String) = viewModelScope.launch { runCatching { client?.unpair(padID) }; loadOwner() }
 
     fun updateOwnerSettings(change: (SingSettings) -> SingSettings) {
@@ -212,6 +214,7 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     fun transport(cmd: String) = client?.send(ClientMessage.transport(cmd))
     fun guideVocal(v: Double) = client?.send(ClientMessage.setGuideVocal(v))
     fun setKey(k: Int) = client?.send(ClientMessage.setKey(k.coerceIn(-6, 6)))
+    fun setLyricOffset(ms: Int) = client?.send(ClientMessage.setLyricOffset(ms.coerceIn(-5000, 5000)))
     fun setTempo(t: Double) = client?.send(ClientMessage.setTempo(t.coerceIn(0.75, 1.25)))
     fun updateSettings(change: (SingSettings) -> SingSettings) {
         val s = change(_state.value.settings)

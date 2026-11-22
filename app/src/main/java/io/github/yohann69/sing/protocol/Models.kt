@@ -76,6 +76,7 @@ data class NowPlaying(
     val nextLine: String? = null,
     val keyShift: Int = 0,
     val tempo: Double = 1.0,
+    val lyricOffsetMs: Int = 0,
 ) {
     fun estimatedPositionMs(now: Long = System.currentTimeMillis()): Long =
         if (state == PlaybackState.playing) positionMs + ((now - positionAt.toLong()).coerceAtLeast(0) * tempo).toLong() else positionMs
@@ -141,7 +142,14 @@ data class SingSettings(
     val storage: StorageSettings = StorageSettings(),
     val system: SystemSettings = SystemSettings(),
     val network: NetworkSettings = NetworkSettings(),
+    val privacy: PrivacySettings = PrivacySettings(),
 )
+
+@Serializable
+data class PrivacySettings(val familyMode: Boolean = false, val keepHistory: Boolean = true, val guestsSeeStats: Boolean = true, val guestsCanRequest: Boolean = true, val guestsCanCreateSingers: Boolean = true)
+
+@Serializable
+data class SongSettings(val lyricOffsetMs: Int = 0, val defaultGuideVocal: Double? = null, val keyShift: Int = 0, val tempo: Double = 1.0, val hiddenInFamilyMode: Boolean = false, val pinned: Boolean = false)
 
 @Serializable
 data class StorageSettings(val limitGB: Double = 0.0, val stemsLimitGB: Double = 0.0, val lowDiskWarningGB: Double = 10.0, val autoFree: Boolean = true)
@@ -365,6 +373,7 @@ object ClientMessage {
         msg("request", buildJsonObject { put("track", enc(track)); put("singerIDs", enc(singerIDs)) })
     fun setKey(semitones: Int) = msg("setKey", buildJsonObject { put("semitones", semitones) })
     fun setTempo(v: Double) = msg("setTempo", buildJsonObject { put("value", v) })
+    fun setLyricOffset(ms: Int) = msg("setLyricOffset", buildJsonObject { put("ms", ms) })
     fun ping() = msg("ping", null)
 }
 

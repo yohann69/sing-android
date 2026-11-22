@@ -154,6 +154,12 @@ fun OwnerDialog(vm: PadViewModel, dismiss: () -> Unit) {
                 item { Text("Processing", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
                 item { OwnerToggle("Process the whole library in the background", s.system.processLibraryInBackground) { v -> vm.updateOwnerSettings { it.copy(system = it.system.copy(processLibraryInBackground = v)) } } }
                 item { OwnerToggle("Pause processing while someone sings", s.system.pauseProcessingWhileSinging) { v -> vm.updateOwnerSettings { it.copy(system = it.system.copy(pauseProcessingWhileSinging = v)) } } }
+                item { Text("Privacy", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
+                item { OwnerToggle("Family mode", s.privacy.familyMode) { v -> vm.updateOwnerSettings { it.copy(privacy = it.privacy.copy(familyMode = v)) } } }
+                item { OwnerToggle("Save history and stats", s.privacy.keepHistory) { v -> vm.updateOwnerSettings { it.copy(privacy = it.privacy.copy(keepHistory = v)) } } }
+                item { OwnerToggle("Guests can see stats", s.privacy.guestsSeeStats) { v -> vm.updateOwnerSettings { it.copy(privacy = it.privacy.copy(guestsSeeStats = v)) } } }
+                item { OwnerToggle("Guests can request songs", s.privacy.guestsCanRequest) { v -> vm.updateOwnerSettings { it.copy(privacy = it.privacy.copy(guestsCanRequest = v)) } } }
+                item { OwnerToggle("Guests can add themselves", s.privacy.guestsCanCreateSingers) { v -> vm.updateOwnerSettings { it.copy(privacy = it.privacy.copy(guestsCanCreateSingers = v)) } } }
                 item { Text("Network", style = MaterialTheme.typography.titleMedium, color = Ember.accentSoft, modifier = Modifier.padding(top = 16.dp)) }
                 item { Stepper("Paired devices allowed", s.network.maxPads.toDouble(), if (s.network.maxPads == 0) "No limit" else "${s.network.maxPads}", 1.0) { v -> vm.updateOwnerSettings { it.copy(network = it.network.copy(maxPads = v.toInt())) } } }
             }
@@ -170,10 +176,32 @@ private fun OwnerToggle(label: String, value: Boolean, onChange: (Boolean) -> Un
     ListItem({ Text(label) }, trailingContent = { Switch(value, onChange) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
 
 @Composable
-private fun Stepper(label: String, value: Double, display: String, step: Double, onChange: (Double) -> Unit) =
+private fun Stepper(label: String, value: Double, display: String, step: Double, allowNegative: Boolean = false, onChange: (Double) -> Unit) =
     ListItem({ Text(label) }, supportingContent = { Text(display) }, trailingContent = {
         Row {
-            TextButton({ onChange((value - step).coerceAtLeast(0.0)) }) { Text("−") }
+            TextButton({ onChange(if (allowNegative) value - step else (value - step).coerceAtLeast(0.0)) }) { Text("−") }
             TextButton({ onChange(value + step) }) { Text("+") }
         }
     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+
+@Composable
+fun SongSettingsDialog(vm: PadViewModel, songId: Long, dismiss: () -> Unit) {
+    var s by remember { mutableStateOf<io.github.yohann69.sing.protocol.SongSettings?>(null) }
+    LaunchedEffect(songId) { s = runCatching { vm.client?.songSettings(songId) }.getOrNull() }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Song settings") },
+        text = {
+            val cur = s
+            if (cur == null) Text("Loading…") else Column {
+                Stepper("Lyric timing", cur.lyricOffsetMs.toDouble(), if (cur.lyricOffsetMs == 0) "As found" else "%+d ms".format(cur.lyricOffsetMs), 100.0, allowNegative = true) { s = cur.copy(lyricOffsetMs = it.toInt()) }
+                Stepper("Key", cur.keyShift.toDouble(), if (cur.keyShift == 0) "Original" else "%+d".format(cur.keyShift), 1.0, allowNegative = true) { s = cur.copy(keyShift = it.toInt().coerceIn(-6, 6)) }
+                Stepper("Tempo", cur.tempo, "${(cur.tempo * 100).toInt()}%", 0.05) { s = cur.copy(tempo = it.coerceIn(0.75, 1.25)) }
+                OwnerToggle("Hide in family mode", cur.hiddenInFamilyMode) { s = cur.copy(hiddenInFamilyMode = it) }
+                OwnerToggle("Keep stems", cur.pinned) { s = cur.copy(pinned = it) }
+            }
+        },
+        confirmButton = { Button({ s?.let { v -> vm.saveSongSettings(songId, v) }; dismiss() }, enabled = s != null) { Text("Save") } },
+        dismissButton = { TextButton(dismiss) { Text("Cancel") } },
+    )
+}
