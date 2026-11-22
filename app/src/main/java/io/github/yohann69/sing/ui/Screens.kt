@@ -287,7 +287,7 @@ fun NowPlayingScreen(vm: PadViewModel, wide: Boolean) {
                         val l = lyrics
                         val i = l?.lineIndex(pos + 0.15)
                         AnimatedContent(i, transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) }, label = "line") { idx ->
-                            Text(if (l != null && idx != null) karaoke(l.lines[idx], pos) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
+                            Text(if (l != null && idx != null) karaoke(l.lines[idx], pos, voiceColor(l, l.lines[idx], state.settings.tv.showSingerNames)) else buildAnnotatedString { append(np.currentLine ?: "♪") }, style = LyricStyle)
                         }
                         i?.let { l?.lines?.getOrNull(it)?.romanization }?.let { ro ->
                             Text(ro, style = LyricStyle.copy(fontSize = 18.sp), color = Ember.text.copy(alpha = 0.75f))
@@ -325,14 +325,15 @@ private fun label(s: PlaybackState) = when (s) {
 }
 
 /** Sung words in white, the current word filling from left to right, upcoming words dimmed. */
-fun karaoke(line: LyricLine, t: Double) = buildAnnotatedString {
-    val dim = Color.White.copy(alpha = 0.38f)
+fun karaoke(line: LyricLine, t: Double, voice: Color? = null) = buildAnnotatedString {
+    val sung = voice ?: Color.White
+    val dim = sung.copy(alpha = if (voice != null) 0.45f else 0.38f)
     line.segments.forEach { s ->
         val p = ((t - s.start) / (s.end - s.start).coerceAtLeast(0.01)).coerceIn(0.0, 1.0).toFloat()
         val style = when {
-            p >= 1f -> SpanStyle(color = Color.White)
+            p >= 1f -> SpanStyle(color = sung)
             p <= 0f -> SpanStyle(color = dim)
-            else -> SpanStyle(brush = Brush.horizontalGradient(0f to Color.White, p to Color.White, (p + 0.08f).coerceAtMost(1f) to dim, 1f to dim))
+            else -> SpanStyle(brush = Brush.horizontalGradient(0f to sung, p to sung, (p + 0.08f).coerceAtMost(1f) to dim, 1f to dim))
         }
         withStyle(style) { append(s.text) }
         if (s.endsWord) append(" ")
@@ -683,7 +684,7 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Toggle(tr("Previous line"), tv.showPreviousLine) { v -> setTv { it.copy(showPreviousLine = v) } } }
         item { Toggle(tr("Next line"), tv.showNextLine) { v -> setTv { it.copy(showNextLine = v) } } }
         item { Toggle(tr("Backing vocals"), tv.showBackingVocals) { v -> setTv { it.copy(showBackingVocals = v) } } }
-        item { Toggle(tr("Singer names"), tv.showSingerNames) { v -> setTv { it.copy(showSingerNames = v) } } }
+        item { Toggle(tr("One color per singer in duets"), tv.showSingerNames) { v -> setTv { it.copy(showSingerNames = v) } } }
         item { Toggle(tr("Translation line (on-device AI)"), tv.showTranslation) { v -> setTv { it.copy(showTranslation = v) } } }
         if (tv.showTranslation) item { LanguagePicker(tr("Translate the TV into"), tv.translationLanguage, languages) { c -> setTv { it.copy(translationLanguage = c) } } }
         item { Toggle(tr("Countdown dots"), tv.showCountdown) { v -> setTv { it.copy(showCountdown = v) } } }
@@ -843,3 +844,6 @@ private fun MixSlider(label: String, value: Double, onChange: (Double) -> Unit) 
         Slider(v, { v = it; onChange(it.toDouble()) })
     }
 }
+
+fun voiceColor(l: io.github.yohann69.sing.protocol.Lyrics, line: LyricLine, on: Boolean): Color? =
+    if (!on) null else l.voiceIndex(line)?.let { Color(io.github.yohann69.sing.protocol.voicePalette[it % io.github.yohann69.sing.protocol.voicePalette.size]) }

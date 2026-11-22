@@ -390,7 +390,22 @@ data class LyricLine(
 }
 
 @Serializable
-data class Lyrics(val kind: LyricsKind, val source: String, val language: String? = null, val lines: List<LyricLine>) {
+data class Agent(val id: String, val name: String? = null, val isGroup: Boolean = false)
+
+/** Colors for the voices of a song with several singers: no pink or blue. */
+val voicePalette = listOf(0xFFFFB547, 0xFF7BE07B, 0xFFB28DFF, 0xFFFF7A4D, 0xFFFFE45C, 0xFFC6F06B, 0xFFE89A5B, 0xFF9FD8A8)
+
+@Serializable
+data class Lyrics(val kind: LyricsKind, val source: String, val language: String? = null, val agents: List<Agent> = emptyList(), val lines: List<LyricLine>) {
+    /** Singer voices in order of appearance, everyone-together lines left out. */
+    val voices: List<String> by lazy {
+        val groups = agents.filter { it.isGroup }.map { it.id }.toSet()
+        lines.mapNotNull { it.agent }.filter { it !in groups }.distinct()
+    }
+
+    /** Which voice sings this line when there are two or more; null otherwise. */
+    fun voiceIndex(line: LyricLine): Int? = if (voices.size < 2) null else line.agent?.let { voices.indexOf(it).takeIf { i -> i >= 0 } }
+
     fun lineIndex(t: Double): Int? {
         var found: Int? = null
         for ((i, l) in lines.withIndex()) { if (l.start <= t) found = i else break }

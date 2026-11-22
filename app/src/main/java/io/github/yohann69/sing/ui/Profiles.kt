@@ -183,7 +183,7 @@ fun TeleprompterDialog(vm: PadViewModel, dismiss: () -> Unit) {
                 val prev = i?.let { l.lines.getOrNull(it - 1) }
                 prev?.let { Text(it.text, fontSize = 26.sp, color = Ember.text.copy(alpha = 0.4f), textAlign = TextAlign.Center) }
                 Spacer(Modifier.height(18.dp))
-                Text(if (l != null && i != null) karaoke(l.lines[i], pos) else androidx.compose.ui.text.buildAnnotatedString { append(state.nowPlaying.currentLine ?: "♪") },
+                Text(if (l != null && i != null) karaoke(l.lines[i], pos, voiceColor(l, l.lines[i], state.settings.tv.showSingerNames)) else androidx.compose.ui.text.buildAnnotatedString { append(state.nowPlaying.currentLine ?: "♪") },
                     style = LyricStyle.copy(fontSize = 44.sp, lineHeight = 52.sp), textAlign = TextAlign.Center)
                 i?.let { l?.lines?.getOrNull(it)?.romanization }?.let { Text(it, fontSize = 22.sp, color = Ember.text.copy(alpha = 0.7f)) }
                 Spacer(Modifier.height(18.dp))
