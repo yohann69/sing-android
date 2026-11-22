@@ -117,6 +117,8 @@ class SingClient(val endpoint: Endpoint, var token: String? = null) {
         return json.decodeFromString<SearchResponse>(check(r)).songs
     }
 
+    suspend fun startPhoneMic(): PhoneMicSession = send(HttpMethod.Post, "/v1/mic/phone", "{}")
+    suspend fun stopPhoneMic() { send<kotlinx.serialization.json.JsonElement>(HttpMethod.Delete, "/v1/mic/phone", "{}") }
     suspend fun searchLines(q: String): SearchResponse = get("/v1/lines", "q" to q)
     suspend fun ask(q: String): SearchResponse = get("/v1/ask", "q" to q)
     suspend fun duetSuggestions(a: Long, b: Long): List<Suggestion> = get("/v1/suggestions/duet", "a" to a, "b" to b)

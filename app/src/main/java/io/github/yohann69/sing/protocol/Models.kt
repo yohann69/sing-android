@@ -477,3 +477,6 @@ data class RecordingInfo(
     val kept: Boolean = false,
     val shareToken: String = "",
 )
+
+@Serializable
+data class PhoneMicSession(val port: Int, val key: String, val sampleRate: Int = 24000, val samplesPerPacket: Int = 480)

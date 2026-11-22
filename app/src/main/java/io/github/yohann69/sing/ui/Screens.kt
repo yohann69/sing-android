@@ -657,6 +657,15 @@ fun SettingsScreen(vm: PadViewModel) {
         item { Header("Me") }
         item { ListItem({ Text("Singer") }, supportingContent = { Text(state.singers.firstOrNull { it.id == vm.singerId.value }?.name ?: "Not chosen") }, modifier = Modifier.clickable { picking = true }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
         if (vm.singerId.value != null) item { ListItem({ Text("My profile") }, supportingContent = { Text("Privacy, mic effect, key, PIN, my year") }, modifier = Modifier.clickable { profile = true }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) }
+        item {
+            val micOn by vm.phoneMicOn.collectAsState()
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) vm.togglePhoneMic() }
+            Toggle("Use this phone as a mic (experimental)", micOn) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) vm.togglePhoneMic()
+                else ask.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
+        }
         item { Header("My lyrics") }
         item { LanguagePicker("Translate lyrics on this device", lang, languages) { vm.setLanguage(it) } }
         if (!vm.isHost) {

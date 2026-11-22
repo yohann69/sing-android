@@ -45,6 +45,24 @@ class PadViewModel(app: Application) : AndroidViewModel(app) {
     val singerId: StateFlow<Long?> = _singer.asStateFlow()
 
     private val notifier = Notifier(app)
+    private val phoneMic = PhoneMicSender()
+    private val _phoneMicOn = MutableStateFlow(false)
+    val phoneMicOn: StateFlow<Boolean> = _phoneMicOn.asStateFlow()
+
+    /** Uses this phone as a wireless mic through the Mac's speakers. */
+    fun togglePhoneMic() = viewModelScope.launch {
+        if (_phoneMicOn.value) {
+            phoneMic.stop(); _phoneMicOn.value = false
+            runCatching { client?.stopPhoneMic() }
+            return@launch
+        }
+        val host = _saved.value?.endpoint?.host ?: return@launch
+        runCatching { client?.startPhoneMic() }
+            .onSuccess { s -> if (s != null) { phoneMic.start(host, s.port, s.key); _phoneMicOn.value = true; showToast("This phone is now a mic. Keep it away from the speakers.") } }
+            .onFailure { showToast(it.message ?: "Could not start the mic") }
+    }
+
+    override fun onCleared() { phoneMic.stop(); super.onCleared() }
     private val _update = MutableStateFlow<String?>(null)
     /** Set when the Mac runs a newer Sing! than this app. */
     val update: StateFlow<String?> = _update.asStateFlow()
